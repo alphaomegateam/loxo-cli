@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.1]
+
+### Fixed
+
+- `loxo --version` now reports the actual installed version (derived from package
+  metadata) instead of a hardcoded string that could drift. (0.2.0 misreported
+  itself as 0.1.0.)
+
 ## [0.2.0]
 
 ### Added
