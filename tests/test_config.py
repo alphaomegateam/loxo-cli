@@ -2,7 +2,6 @@ import pytest
 
 from loxo_cli.config import (
     DEFAULT_BASE_URL,
-    LoxoSettings,
     list_profiles,
     load_settings,
     write_profile,
