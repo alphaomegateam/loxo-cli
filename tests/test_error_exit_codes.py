@@ -1,6 +1,6 @@
-"""Central error -> exit-code mapping (LoxoCommand in commands/_app.py).
+"""Central error -> exit-code mapping (LoxoGroup in commands/_app.py).
 
-Typer does not honor a raised ClickException's exit_code, so LoxoCommand.invoke
+Typer does not honor a raised ClickException's exit_code, so LoxoGroup.invoke
 converts LoxoError/ConfigError into typer.Exit with the mapped code. These tests
 exercise that path through a real command (`loxo api`).
 """
