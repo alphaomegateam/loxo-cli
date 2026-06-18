@@ -93,6 +93,7 @@ def main(
 
 
 from loxo_cli.commands import api as _api_cmd  # noqa: E402
+from loxo_cli.commands.activities import activities_app  # noqa: E402
 from loxo_cli.commands.candidates import candidates_app  # noqa: E402
 from loxo_cli.commands.companies import companies_app  # noqa: E402
 from loxo_cli.commands.deals import deals_app  # noqa: E402
@@ -105,6 +106,7 @@ app.add_typer(jobs_app, name="jobs")
 app.add_typer(companies_app, name="companies")
 app.add_typer(deals_app, name="deals")
 app.add_typer(candidates_app, name="candidates")
+app.add_typer(activities_app, name="activities")
 
 
 def run() -> None:
