@@ -10,7 +10,7 @@ jobs:
       id-token: write   # trusted publishing (OIDC)
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v8
+      - uses: astral-sh/setup-uv@v8.2.0
         with:
           python-version: "3.12"
       - run: uv build
