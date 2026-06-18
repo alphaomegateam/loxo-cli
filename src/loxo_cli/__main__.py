@@ -100,6 +100,7 @@ from loxo_cli.commands.deals import deals_app  # noqa: E402
 from loxo_cli.commands.jobs import jobs_app  # noqa: E402
 from loxo_cli.commands.people import people_app  # noqa: E402
 from loxo_cli.commands.webhooks import webhooks_app  # noqa: E402
+from loxo_cli.commands.ref import ref_app  # noqa: E402
 
 _api_cmd.register(app)
 app.add_typer(people_app, name="people")
@@ -109,6 +110,7 @@ app.add_typer(deals_app, name="deals")
 app.add_typer(candidates_app, name="candidates")
 app.add_typer(activities_app, name="activities")
 app.add_typer(webhooks_app, name="webhooks")
+app.add_typer(ref_app, name="ref")
 
 
 def run() -> None:
