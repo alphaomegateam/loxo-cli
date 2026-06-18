@@ -90,6 +90,11 @@ def main(
     )
 
 
+from loxo_cli.commands import api as _api_cmd  # noqa: E402
+
+_api_cmd.register(app)
+
+
 def run() -> None:
     # Click's standalone mode (inside app()) catches ClickException — which
     # LoxoError and ConfigError both subclass — prints to stderr, and exits
