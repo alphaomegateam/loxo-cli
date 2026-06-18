@@ -1,3 +1,5 @@
+import re
+
 import httpx
 import respx
 from typer.testing import CliRunner
@@ -5,6 +7,14 @@ from typer.testing import CliRunner
 from loxo_cli.__main__ import app
 
 runner = CliRunner()
+
+_ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _plain(text: str) -> str:
+    """Strip ANSI styling so Rich-rendered --help is assertable regardless of
+    the terminal color environment (CI forces color, splitting tokens)."""
+    return _ANSI.sub("", text)
 
 
 @respx.mock
@@ -31,6 +41,7 @@ def test_appstate_settings_and_client(tmp_path):
 def test_callback_registers_global_options():
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    assert "--profile" in result.stdout
-    assert "--json" in result.stdout
-    assert "--jq" in result.stdout
+    out = _plain(result.stdout)
+    assert "--profile" in out
+    assert "--json" in out
+    assert "--jq" in out
