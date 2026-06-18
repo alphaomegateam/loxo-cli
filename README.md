@@ -55,8 +55,9 @@ api_key_cmd = "op read op://Private/loxo-staging/credential"
 ```
 
 `api_key_cmd` is run on demand and its stdout is used as the key, so the secret never has
-to live in the file. The key is never printed by `loxo configure list`, logged, or shown in
-`--verbose` output.
+to live in the file. Set it without hand-editing the file via
+`loxo configure --api-key-cmd "op read op://Private/loxo/credential"`. The key is never
+printed by `loxo configure list`, logged, or shown in `--verbose` output.
 
 ## Commands
 

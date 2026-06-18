@@ -25,9 +25,18 @@ def test_loxo_error_maps_to_exit_code_and_prints_message():
     assert "Error" in result.output  # clean message, not a raw traceback
 
 
-def test_config_error_maps_to_exit_code_2():
+def test_config_error_maps_to_exit_code_2(tmp_path):
     # No credentials anywhere -> ConfigError raised inside the command -> exit 2.
-    result = runner.invoke(app, ["api", "GET", "people"], env={})
+    # Hermetic: point XDG_CONFIG_HOME at an empty dir and clear LOXO_* so the
+    # real ~/.config/loxo/config.toml and ambient env can't supply credentials.
+    env = {
+        "XDG_CONFIG_HOME": str(tmp_path),
+        "LOXO_API_KEY": None,
+        "LOXO_API_SLUG": None,
+        "LOXO_BASE_URL": None,
+        "LOXO_PROFILE": None,
+    }
+    result = runner.invoke(app, ["api", "GET", "people"], env=env)
     assert result.exit_code == 2
     assert "Error" in result.output
 

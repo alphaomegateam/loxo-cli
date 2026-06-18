@@ -60,6 +60,37 @@ def test_page_pagination():
 
 
 @respx.mock
+def test_page_pagination_without_total_count():
+    # Some page-scheme endpoints may omit total_count. Pagination must NOT stop
+    # after page 1 in that case — it should keep going until results are empty.
+    base = "https://app.loxo.co/api/acme/jobs"
+    responses = [
+        httpx.Response(
+            200,
+            json={
+                "pagination": {"per_page": 2, "current_page": 1},
+                "results": [{"id": 1}, {"id": 2}],
+            },
+        ),
+        httpx.Response(
+            200,
+            json={
+                "pagination": {"per_page": 2, "current_page": 2},
+                "results": [{"id": 3}],
+            },
+        ),
+        httpx.Response(
+            200,
+            json={"pagination": {"per_page": 2, "current_page": 3}, "results": []},
+        ),
+    ]
+    respx.get(base).mock(side_effect=responses)
+    with LoxoClient(SETTINGS) as client:
+        items = list(paginate(client, "jobs", scheme="page", items_key="results", per_page=2))
+    assert [i["id"] for i in items] == [1, 2, 3]
+
+
+@respx.mock
 def test_after_id_pagination():
     base = "https://app.loxo.co/api/acme/source_types"
     responses = [
