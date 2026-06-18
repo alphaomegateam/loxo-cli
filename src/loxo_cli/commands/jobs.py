@@ -4,13 +4,12 @@ from typing import Optional
 
 import typer
 
-from loxo_cli.commands._app import LoxoTyper
 from loxo_cli.commands._helpers import build_payload, load_data, parse_fields
 from loxo_cli.models.base import unwrap_envelope
 from loxo_cli.models.job import Job
 from loxo_cli.pagination import paginate
 
-jobs_app = LoxoTyper(help="Manage jobs. Unofficial — not affiliated with Loxo, Inc.")
+jobs_app = typer.Typer(help="Manage jobs. Unofficial — not affiliated with Loxo, Inc.")
 
 LIST_COLUMNS = ["id", "title", "status"]
 

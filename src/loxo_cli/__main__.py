@@ -9,13 +9,14 @@ from rich.console import Console
 
 from loxo_cli import __version__
 from loxo_cli.client import LoxoClient, build_client
-from loxo_cli.commands._app import LoxoTyper
+from loxo_cli.commands._app import LoxoGroup
 from loxo_cli.config import LoxoSettings, load_settings
 from loxo_cli.output import render
 
 HELP_EPILOG = "Unofficial — not affiliated with Loxo, Inc."
 
-app = LoxoTyper(
+app = typer.Typer(
+    cls=LoxoGroup,
     help="loxo — command-line interface for the Loxo recruiting API.",
     epilog=HELP_EPILOG,
     no_args_is_help=True,

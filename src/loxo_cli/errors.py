@@ -7,8 +7,9 @@ import click
 # and the `.status_code`/`.is_4xx` predicates used by client.py keep working.
 # NOTE: Typer's invocation path does NOT auto-honor a raised ClickException's
 # exit_code (it surfaces as a generic exit 1). The exit-code mapping is applied
-# by LoxoCommand.invoke in commands/_app.py, which every command uses via
-# LoxoTyper. `exit_code_for` below remains the single source of the mapping.
+# by LoxoGroup.invoke in commands/_app.py (set on the root app via
+# typer.Typer(cls=LoxoGroup)). `_loxo_exit_code` below remains the single source
+# of the LoxoError mapping.
 
 
 class ConfigError(click.ClickException):

@@ -7,8 +7,6 @@ import typer
 from loxo_cli.commands._helpers import load_data, parse_fields
 from loxo_cli.pagination import detect_scheme, extract_items, paginate
 
-api_app = typer.Typer()
-
 
 def register(app: typer.Typer) -> None:
     app.command("api", help="Call any Loxo endpoint directly. "
@@ -35,6 +33,8 @@ def api_command(
     client = state.client()
 
     if all_pages:
+        if method.upper() != "GET":
+            raise typer.BadParameter("--all only supports GET (pagination is GET-only).")
         scheme = paginate_scheme
         if scheme is None:
             first = client.get(path, params=params)

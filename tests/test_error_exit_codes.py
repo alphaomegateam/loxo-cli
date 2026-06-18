@@ -39,3 +39,14 @@ def test_server_error_maps_to_exit_code_6():
     )
     result = runner.invoke(app, ["api", "GET", "people"], env=ENV)
     assert result.exit_code == 6  # 5xx -> server error
+
+
+@respx.mock
+def test_nested_subcommand_error_maps_to_exit_code():
+    # LoxoGroup must map errors from NESTED sub-app commands, not just the
+    # root-level `api` command.
+    respx.get("https://app.loxo.co/api/acme/people/9").mock(
+        return_value=httpx.Response(401, text="unauthorized")
+    )
+    result = runner.invoke(app, ["people", "get", "9"], env=ENV)
+    assert result.exit_code == 3  # 401 -> auth error
