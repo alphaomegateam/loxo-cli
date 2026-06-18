@@ -84,3 +84,19 @@ def test_write_and_list_profiles_hides_key(tmp_path):
     assert profiles["cp"]["has_key"] is True
     assert "topsecret" not in str(profiles)
     assert oct(cfg.stat().st_mode)[-3:] == "600"
+
+
+def test_api_key_cmd_not_run_when_flag_present(tmp_path):
+    # Regression: a profile with a failing api_key_cmd must NOT be invoked when a
+    # higher-precedence source (flag/env) already supplies the key.
+    cfg = tmp_path / "config.toml"
+    cfg.write_text('[profile.x]\napi_key_cmd="false"\nslug="s"\n')
+    s = load_settings(profile="x", api_key="flagkey", env={}, config_path=cfg)
+    assert s.api_key == "flagkey"
+
+
+def test_api_key_cmd_failure_raises_config_error(tmp_path):
+    cfg = tmp_path / "config.toml"
+    cfg.write_text('[profile.x]\napi_key_cmd="false"\nslug="s"\n')
+    with pytest.raises(ConfigError):
+        load_settings(profile="x", env={}, config_path=cfg)

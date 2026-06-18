@@ -39,9 +39,12 @@ def _resolve_key(profile_data: Mapping[str, Any]) -> str | None:
         return str(profile_data["api_key"])
     cmd = profile_data.get("api_key_cmd")
     if cmd:
-        out = subprocess.run(
-            shlex.split(str(cmd)), capture_output=True, text=True, check=True
-        )
+        try:
+            out = subprocess.run(
+                shlex.split(str(cmd)), capture_output=True, text=True, check=True
+            )
+        except subprocess.CalledProcessError as exc:
+            raise ConfigError(f"api_key_cmd failed (exit {exc.returncode}).") from exc
         return out.stdout.strip()
     return None
 
@@ -66,8 +69,9 @@ def load_settings(
             raise ConfigError(f"Profile '{profile_name}' not found in config.")
         profile_data = profiles[profile_name]
 
-    file_key = _resolve_key(profile_data)
-    resolved_key = api_key or env.get("LOXO_API_KEY") or file_key
+    # Resolve the key lazily: only consult the profile (which may shell out via
+    # api_key_cmd) when no flag/env value satisfies the higher-precedence sources.
+    resolved_key = api_key or env.get("LOXO_API_KEY") or _resolve_key(profile_data)
     resolved_slug = slug or env.get("LOXO_API_SLUG") or profile_data.get("slug")
     resolved_base = (
         base_url
