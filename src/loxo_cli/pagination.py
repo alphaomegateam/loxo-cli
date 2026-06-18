@@ -65,10 +65,13 @@ def paginate(
                 return
             yield from items
             pag = data.get("pagination", {}) if isinstance(data, dict) else {}
-            total = pag.get("total_count", 0)
+            total = pag.get("total_count")
             size = pag.get("per_page", per_page)
             current = pag.get("current_page", page)
-            if current * size >= total:
+            # Only trust the count-based stop when total_count is actually
+            # reported; otherwise keep paging until results come back empty
+            # (the guard above) so a missing total_count can't truncate results.
+            if total is not None and current * size >= total:
                 return
             page = current + 1
 

@@ -53,3 +53,29 @@ def test_configure_list_hides_key(tmp_path):
     assert "cp" in result.stdout
     assert "acme" in result.stdout
     assert "topsecret" not in result.stdout
+
+
+def test_configure_with_api_key_cmd(tmp_path):
+    cfg = tmp_path / "config.toml"
+    result = runner.invoke(
+        app,
+        [
+            "configure",
+            "--name",
+            "vault",
+            "--slug",
+            "acme",
+            "--api-key-cmd",
+            "op read op://Private/loxo/credential",
+            "--config-path",
+            str(cfg),
+        ],
+    )
+    assert result.exit_code == 0
+    data = tomllib.loads(cfg.read_text())
+    assert data["profile"]["vault"]["api_key_cmd"] == "op read op://Private/loxo/credential"
+    assert "api_key" not in data["profile"]["vault"]  # stores the command, not a key
+    # `list` reports the key as set (resolvable via command) without printing it.
+    listing = runner.invoke(app, ["configure", "list", "--config-path", str(cfg)])
+    assert "api_key=set" in listing.stdout
+    assert "op read" not in listing.stdout

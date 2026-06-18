@@ -20,6 +20,11 @@ def configure(
     slug: Optional[str] = typer.Option(None, "--slug"),
     base_url: Optional[str] = typer.Option(None, "--base-url"),
     api_key: Optional[str] = typer.Option(None, "--api-key"),
+    api_key_cmd: Optional[str] = typer.Option(
+        None,
+        "--api-key-cmd",
+        help="Shell command whose stdout is the API key (stored instead of the key itself).",
+    ),
     config_path: Optional[Path] = typer.Option(None, "--config-path"),
 ) -> None:
     if ctx.invoked_subcommand is not None:
@@ -27,10 +32,13 @@ def configure(
     name = name or typer.prompt("Profile name", default="default")
     slug = slug or typer.prompt("Agency slug")
     base_url = base_url or DEFAULT_BASE_URL
-    api_key = api_key or typer.prompt("API key", hide_input=True)
+    # Prompt for a literal key only when no command source is given.
+    if not api_key_cmd:
+        api_key = api_key or typer.prompt("API key", hide_input=True)
     write_profile(
         name,
         api_key=api_key,
+        api_key_cmd=api_key_cmd,
         slug=slug,
         base_url=base_url,
         make_default=False,

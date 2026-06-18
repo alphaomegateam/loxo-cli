@@ -1,6 +1,24 @@
 # Changelog
 
-## [Unreleased]
+## [0.2.0]
+
+### Added
+
+- `loxo configure --api-key-cmd "<command>"` to store a key-resolving command
+  (e.g. a secrets-manager call) non-interactively instead of a literal key.
+
+### Fixed
+
+- Page-scheme pagination (`jobs --all`, `loxo api --all`) no longer stops after
+  the first page when a response omits `total_count`; it now pages until the
+  result set is empty.
+
+### Changed
+
+- CI/publish workflows updated to `actions/checkout@v7` and `astral-sh/setup-uv@v8`
+  (off the deprecated Node 20 runner).
+
+## [0.1.0]
 
 ### Added
 
