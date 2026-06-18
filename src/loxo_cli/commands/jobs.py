@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
 import typer
 
@@ -22,12 +22,15 @@ def list_jobs(
     per_page: int = typer.Option(50, "--per-page"),
 ) -> None:
     state = ctx.obj
-    params = {"query": query} if query else {}
+    params: dict[str, Any] = {"query": query} if query else {}
     client = state.client()
     if all_pages:
-        rows = [Job.model_validate(i)
-                for i in paginate(client, "jobs", scheme="page", items_key="results",
-                                  params=params, per_page=per_page)]
+        rows = [
+            Job.model_validate(i)
+            for i in paginate(
+                client, "jobs", scheme="page", items_key="results", params=params, per_page=per_page
+            )
+        ]
     else:
         params["per_page"] = per_page
         data = client.get("jobs", params=params)

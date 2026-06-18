@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
 import typer
 
@@ -16,8 +16,11 @@ LIST_COLUMNS = ["id", "name", "amount"]
 
 def _typed(name, amount, person_id, company_id, job_id):
     return {
-        "name": name, "amount": amount, "person_id": person_id,
-        "company_id": company_id, "job_id": job_id,
+        "name": name,
+        "amount": amount,
+        "person_id": person_id,
+        "company_id": company_id,
+        "job_id": job_id,
     }
 
 
@@ -29,12 +32,20 @@ def list_deals(
     per_page: int = typer.Option(50, "--per-page"),
 ) -> None:
     state = ctx.obj
-    params = {"query": query} if query else {}
+    params: dict[str, Any] = {"query": query} if query else {}
     client = state.client()
     if all_pages:
-        rows = [Deal.model_validate(i)
-                for i in paginate(client, "deals", scheme="scroll_id",
-                                  items_key="deals", params=params, per_page=per_page)]
+        rows = [
+            Deal.model_validate(i)
+            for i in paginate(
+                client,
+                "deals",
+                scheme="scroll_id",
+                items_key="deals",
+                params=params,
+                per_page=per_page,
+            )
+        ]
     else:
         params["per_page"] = per_page
         data = client.get("deals", params=params)

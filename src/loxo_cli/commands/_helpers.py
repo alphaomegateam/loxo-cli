@@ -41,9 +41,7 @@ def parse_fields(fields: list[str]) -> dict[str, Any]:
     return result
 
 
-def build_payload(
-    resource_key: str, typed: dict, data: dict, fields: dict
-) -> dict:
+def build_payload(resource_key: str, typed: dict, data: dict, fields: dict) -> dict:
     merged: dict[str, Any] = dict(data)
     merged.update({k: v for k, v in typed.items() if v is not None})
     merged.update(fields)

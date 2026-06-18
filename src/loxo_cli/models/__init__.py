@@ -8,6 +8,13 @@ from loxo_cli.models.reference import ReferenceItem
 from loxo_cli.models.webhook import Webhook
 
 __all__ = [
-    "LoxoModel", "unwrap_envelope", "Candidate", "Company", "Deal",
-    "Job", "Person", "ReferenceItem", "Webhook",
+    "LoxoModel",
+    "unwrap_envelope",
+    "Candidate",
+    "Company",
+    "Deal",
+    "Job",
+    "Person",
+    "ReferenceItem",
+    "Webhook",
 ]

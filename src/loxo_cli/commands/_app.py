@@ -20,7 +20,7 @@ class LoxoGroup(TyperGroup):
     clean message on stderr. Command files stay plain ``typer.Typer``.
     """
 
-    def invoke(self, ctx: typer.Context) -> Any:
+    def invoke(self, ctx) -> Any:  # ctx is typer's vendored-click Context
         try:
             return super().invoke(ctx)
         except (LoxoError, ConfigError) as exc:

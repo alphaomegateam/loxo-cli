@@ -29,8 +29,7 @@ def test_company_optional_name():
 
 def test_webhook_fields():
     w = Webhook.model_validate(
-        {"id": 7, "item_type": "candidate", "action": "create",
-         "endpoint_url": "https://x"}
+        {"id": 7, "item_type": "candidate", "action": "create", "endpoint_url": "https://x"}
     )
     assert (w.item_type, w.action) == ("candidate", "create")
 

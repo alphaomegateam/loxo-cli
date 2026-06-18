@@ -4,8 +4,7 @@ import typer
 
 from loxo_cli.pagination import extract_items, paginate
 
-ref_app = typer.Typer(
-    help="Reference data lookups. Unofficial — not affiliated with Loxo, Inc.")
+ref_app = typer.Typer(help="Reference data lookups. Unofficial — not affiliated with Loxo, Inc.")
 
 COLUMNS = ["id", "name"]
 

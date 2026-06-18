@@ -9,11 +9,22 @@ runner = CliRunner()
 
 def test_configure_writes_profile_noninteractive(tmp_path):
     cfg = tmp_path / "config.toml"
-    result = runner.invoke(app, [
-        "configure", "--name", "cp", "--slug", "acme",
-        "--api-key", "secret", "--base-url", "https://app.loxo.co/api",
-        "--config-path", str(cfg),
-    ])
+    result = runner.invoke(
+        app,
+        [
+            "configure",
+            "--name",
+            "cp",
+            "--slug",
+            "acme",
+            "--api-key",
+            "secret",
+            "--base-url",
+            "https://app.loxo.co/api",
+            "--config-path",
+            str(cfg),
+        ],
+    )
     assert result.exit_code == 0
     data = tomllib.loads(cfg.read_text())
     assert data["profile"]["cp"]["slug"] == "acme"
@@ -23,9 +34,20 @@ def test_configure_writes_profile_noninteractive(tmp_path):
 
 def test_configure_list_hides_key(tmp_path):
     cfg = tmp_path / "config.toml"
-    runner.invoke(app, [
-        "configure", "--name", "cp", "--slug", "acme", "--api-key", "topsecret",
-        "--config-path", str(cfg)])
+    runner.invoke(
+        app,
+        [
+            "configure",
+            "--name",
+            "cp",
+            "--slug",
+            "acme",
+            "--api-key",
+            "topsecret",
+            "--config-path",
+            str(cfg),
+        ],
+    )
     result = runner.invoke(app, ["configure", "list", "--config-path", str(cfg)])
     assert result.exit_code == 0
     assert "cp" in result.stdout

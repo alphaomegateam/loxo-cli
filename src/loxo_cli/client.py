@@ -51,9 +51,7 @@ class LoxoClient:
             print(f"{method.upper()} {target}", file=sys.stderr)
         headers = {"Content-Type": "application/json"} if json is not None else None
         try:
-            response = self._http.request(
-                method, target, params=params, json=json, headers=headers
-            )
+            response = self._http.request(method, target, params=params, json=json, headers=headers)
             response.raise_for_status()
         except httpx.TimeoutException as exc:
             raise LoxoError(

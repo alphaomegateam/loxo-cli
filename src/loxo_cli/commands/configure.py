@@ -29,8 +29,12 @@ def configure(
     base_url = base_url or DEFAULT_BASE_URL
     api_key = api_key or typer.prompt("API key", hide_input=True)
     write_profile(
-        name, api_key=api_key, slug=slug, base_url=base_url,
-        make_default=True, config_path=config_path,
+        name,
+        api_key=api_key,
+        slug=slug,
+        base_url=base_url,
+        make_default=False,
+        config_path=config_path,
     )
     target = config_path or config_file_path()
     typer.echo(f"Saved profile '{name}' to {target}")
@@ -47,5 +51,6 @@ def list_cmd(
     for pname, info in profiles.items():
         default = " (default)" if info["default"] else ""
         key = "set" if info["has_key"] else "missing"
-        typer.echo(f"{pname}{default}: slug={info['slug']} "
-                   f"base_url={info['base_url']} api_key={key}")
+        typer.echo(
+            f"{pname}{default}: slug={info['slug']} " f"base_url={info['base_url']} api_key={key}"
+        )

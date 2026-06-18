@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
 import typer
 
@@ -22,12 +22,20 @@ def list_people(
     per_page: int = typer.Option(50, "--per-page", help="Page size."),
 ) -> None:
     state = ctx.obj
-    params = {"query": query} if query else {}
+    params: dict[str, Any] = {"query": query} if query else {}
     client = state.client()
     if all_pages:
-        rows = [Person.model_validate(i)
-                for i in paginate(client, "people", scheme="scroll_id",
-                                  items_key="people", params=params, per_page=per_page)]
+        rows = [
+            Person.model_validate(i)
+            for i in paginate(
+                client,
+                "people",
+                scheme="scroll_id",
+                items_key="people",
+                params=params,
+                per_page=per_page,
+            )
+        ]
     else:
         params["per_page"] = per_page
         data = client.get("people", params=params)
@@ -50,8 +58,9 @@ def create_person(
     linkedin: Optional[str] = typer.Option(None, "--linkedin"),
     title: Optional[str] = typer.Option(None, "--title"),
     field: list[str] = typer.Option([], "--field", help="Custom field key=value."),
-    data: Optional[str] = typer.Option(None, "--data", "-d",
-                                       help="JSON body: inline, @file, or -."),
+    data: Optional[str] = typer.Option(
+        None, "--data", "-d", help="JSON body: inline, @file, or -."
+    ),
 ) -> None:
     state = ctx.obj
     raw = load_data(data)

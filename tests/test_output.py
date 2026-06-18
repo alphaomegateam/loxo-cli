@@ -14,8 +14,9 @@ def test_to_jsonable_model():
 
 def test_to_jsonable_list_of_models():
     out = to_jsonable([Person.model_validate({"id": 1})])
-    assert out == [{"id": 1, "name": None, "emails": None, "phones": None,
-                    "linkedin_url": None, "title": None}]
+    assert out == [
+        {"id": 1, "name": None, "emails": None, "phones": None, "linkedin_url": None, "title": None}
+    ]
 
 
 def test_apply_jq_dotted():
@@ -45,8 +46,7 @@ def test_render_json_includes_custom_fields(capsys):
 
 def test_render_table_to_tty(capsys):
     console = Console(force_terminal=True, width=80)
-    render([{"id": 1, "name": "Jane"}], as_json=False, columns=["id", "name"],
-           console=console)
+    render([{"id": 1, "name": "Jane"}], as_json=False, columns=["id", "name"], console=console)
     out = capsys.readouterr().out
     assert "Jane" in out
     assert "id" in out

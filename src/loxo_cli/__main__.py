@@ -73,8 +73,8 @@ def _version_callback(value: bool) -> None:
 def main(
     ctx: typer.Context,
     version: bool = typer.Option(
-        False, "--version", callback=_version_callback, is_eager=True,
-        help="Show version and exit."),
+        False, "--version", callback=_version_callback, is_eager=True, help="Show version and exit."
+    ),
     profile: Optional[str] = typer.Option(None, "--profile", help="Config profile."),
     api_key: Optional[str] = typer.Option(None, "--api-key", help="Loxo API key."),
     slug: Optional[str] = typer.Option(None, "--slug", help="Agency slug."),
@@ -87,8 +87,14 @@ def main(
 ) -> None:
     """loxo CLI. Unofficial — not affiliated with Loxo, Inc."""
     ctx.obj = AppState(
-        profile=profile, api_key=api_key, slug=slug, base_url=base_url,
-        json_out=json_out, jq=jq, verbose=verbose, no_color=no_color,
+        profile=profile,
+        api_key=api_key,
+        slug=slug,
+        base_url=base_url,
+        json_out=json_out,
+        jq=jq,
+        verbose=verbose,
+        no_color=no_color,
     )
 
 
@@ -100,8 +106,8 @@ from loxo_cli.commands.configure import configure_app  # noqa: E402
 from loxo_cli.commands.deals import deals_app  # noqa: E402
 from loxo_cli.commands.jobs import jobs_app  # noqa: E402
 from loxo_cli.commands.people import people_app  # noqa: E402
-from loxo_cli.commands.webhooks import webhooks_app  # noqa: E402
 from loxo_cli.commands.ref import ref_app  # noqa: E402
+from loxo_cli.commands.webhooks import webhooks_app  # noqa: E402
 
 _api_cmd.register(app)
 app.add_typer(configure_app, name="configure")

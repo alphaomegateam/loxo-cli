@@ -6,9 +6,7 @@ from loxo_cli.client import LoxoClient, url_for
 from loxo_cli.config import LoxoSettings
 from loxo_cli.errors import LoxoError
 
-SETTINGS = LoxoSettings(
-    api_key="testkey", slug="acme", base_url="https://app.loxo.co/api"
-)
+SETTINGS = LoxoSettings(api_key="testkey", slug="acme", base_url="https://app.loxo.co/api")
 
 
 def test_url_for_joins_parts():

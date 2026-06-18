@@ -9,7 +9,8 @@ from loxo_cli.models.candidate import Candidate
 from loxo_cli.pagination import paginate
 
 candidates_app = typer.Typer(
-    help="Manage job candidates. Unofficial — not affiliated with Loxo, Inc.")
+    help="Manage job candidates. Unofficial — not affiliated with Loxo, Inc."
+)
 
 LIST_COLUMNS = ["id", "person_id", "job_id"]
 
@@ -25,9 +26,12 @@ def list_candidates(
     endpoint = f"jobs/{job}/candidates"
     client = state.client()
     if all_pages:
-        rows = [Candidate.model_validate(i)
-                for i in paginate(client, endpoint, scheme="scroll_id",
-                                  items_key="candidates", per_page=per_page)]
+        rows = [
+            Candidate.model_validate(i)
+            for i in paginate(
+                client, endpoint, scheme="scroll_id", items_key="candidates", per_page=per_page
+            )
+        ]
     else:
         data = client.get(endpoint, params={"per_page": per_page})
         rows = [Candidate.model_validate(i) for i in data.get("candidates", [])]
@@ -48,7 +52,8 @@ def get_candidate(
 @candidates_app.command(
     "add",
     help="Add a person to a job as a candidate. If Loxo rejects the body shape, "
-         "use `loxo api POST jobs/<id>/candidates --data @body.json`.")
+    "use `loxo api POST jobs/<id>/candidates --data @body.json`.",
+)
 def add_candidate(
     ctx: typer.Context,
     job: int = typer.Option(..., "--job", "-j"),

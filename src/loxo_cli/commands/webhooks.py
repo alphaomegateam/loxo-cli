@@ -8,8 +8,7 @@ from loxo_cli.models.base import unwrap_envelope
 from loxo_cli.models.webhook import Webhook
 from loxo_cli.pagination import extract_items
 
-webhooks_app = typer.Typer(
-    help="Manage webhooks. Unofficial — not affiliated with Loxo, Inc.")
+webhooks_app = typer.Typer(help="Manage webhooks. Unofficial — not affiliated with Loxo, Inc.")
 
 
 class ItemType(str, enum.Enum):
@@ -63,8 +62,9 @@ def create_webhook(
     url: str = typer.Option(..., "--url"),
 ) -> None:
     state = ctx.obj
-    payload = {"webhook": {"item_type": item_type.value, "action": action.value,
-                           "endpoint_url": url}}
+    payload = {
+        "webhook": {"item_type": item_type.value, "action": action.value, "endpoint_url": url}
+    }
     result = state.client().post("webhooks", json=payload)
     state.emit(Webhook.model_validate(unwrap_envelope(result, "webhook")))
 
@@ -78,8 +78,9 @@ def update_webhook(
     url: str = typer.Option(..., "--url"),
 ) -> None:
     state = ctx.obj
-    payload = {"webhook": {"item_type": item_type.value, "action": action.value,
-                           "endpoint_url": url}}
+    payload = {
+        "webhook": {"item_type": item_type.value, "action": action.value, "endpoint_url": url}
+    }
     result = state.client().put(f"webhooks/{webhook_id}", json=payload)
     state.emit(Webhook.model_validate(unwrap_envelope(result, "webhook")))
 

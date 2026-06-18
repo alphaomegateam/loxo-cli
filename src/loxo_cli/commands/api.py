@@ -9,8 +9,10 @@ from loxo_cli.pagination import detect_scheme, extract_items, paginate
 
 
 def register(app: typer.Typer) -> None:
-    app.command("api", help="Call any Loxo endpoint directly. "
-                            "Unofficial — not affiliated with Loxo, Inc.")(api_command)
+    app.command(
+        "api",
+        help="Call any Loxo endpoint directly. " "Unofficial — not affiliated with Loxo, Inc.",
+    )(api_command)
 
 
 def api_command(
@@ -18,14 +20,16 @@ def api_command(
     method: str = typer.Argument(..., help="HTTP method: GET/POST/PUT/DELETE."),
     path: str = typer.Argument(..., help="Endpoint path, e.g. people or jobs/123."),
     param: list[str] = typer.Option(
-        [], "--param", "-p", help="Query param key=value (repeatable)."),
+        [], "--param", "-p", help="Query param key=value (repeatable)."
+    ),
     data: Optional[str] = typer.Option(
-        None, "--data", "-d", help="JSON body: inline, @file, or - for stdin."),
-    raw: bool = typer.Option(
-        False, "--raw", help="No-op for the generic command (always raw)."),
+        None, "--data", "-d", help="JSON body: inline, @file, or - for stdin."
+    ),
+    raw: bool = typer.Option(False, "--raw", help="No-op for the generic command (always raw)."),
     all_pages: bool = typer.Option(False, "--all", help="Auto-paginate all pages."),
     paginate_scheme: Optional[str] = typer.Option(
-        None, "--paginate", help="Force scheme: scroll_id|page|after_id."),
+        None, "--paginate", help="Force scheme: scroll_id|page|after_id."
+    ),
 ) -> None:
     state = ctx.obj
     params = parse_fields(param)

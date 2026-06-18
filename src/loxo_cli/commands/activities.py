@@ -8,7 +8,8 @@ from loxo_cli.commands._helpers import build_payload, load_data, parse_fields
 from loxo_cli.pagination import paginate
 
 activities_app = typer.Typer(
-    help="Manage person events/activities. Unofficial — not affiliated with Loxo, Inc.")
+    help="Manage person events/activities. Unofficial — not affiliated with Loxo, Inc."
+)
 
 
 @activities_app.command("list")
@@ -27,9 +28,16 @@ def list_activities(
         params["job_id"] = job_id
     client = state.client()
     if all_pages:
-        rows = list(paginate(client, "person_events", scheme="scroll_id",
-                             items_key="person_events", params=params,
-                             per_page=per_page))
+        rows = list(
+            paginate(
+                client,
+                "person_events",
+                scheme="scroll_id",
+                items_key="person_events",
+                params=params,
+                per_page=per_page,
+            )
+        )
     else:
         params["per_page"] = per_page
         data = client.get("person_events", params=params)
@@ -52,8 +60,11 @@ def add_activity(
     raw = load_data(data)
     inner = raw.get("person_event", raw)
     typed = {
-        "activity_type_id": activity_type_id, "person_id": person_id,
-        "job_id": job_id, "company_id": company_id, "notes": notes,
+        "activity_type_id": activity_type_id,
+        "person_id": person_id,
+        "job_id": job_id,
+        "company_id": company_id,
+        "notes": notes,
     }
     payload = build_payload("person_event", typed, inner, parse_fields(field))
     result = state.client().post("person_events", json=payload)

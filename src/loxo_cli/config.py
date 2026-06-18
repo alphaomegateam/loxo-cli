@@ -40,9 +40,7 @@ def _resolve_key(profile_data: Mapping[str, Any]) -> str | None:
     cmd = profile_data.get("api_key_cmd")
     if cmd:
         try:
-            out = subprocess.run(
-                shlex.split(str(cmd)), capture_output=True, text=True, check=True
-            )
+            out = subprocess.run(shlex.split(str(cmd)), capture_output=True, text=True, check=True)
         except subprocess.CalledProcessError as exc:
             raise ConfigError(f"api_key_cmd failed (exit {exc.returncode}).") from exc
         return out.stdout.strip()
@@ -74,16 +72,11 @@ def load_settings(
     resolved_key = api_key or env.get("LOXO_API_KEY") or _resolve_key(profile_data)
     resolved_slug = slug or env.get("LOXO_API_SLUG") or profile_data.get("slug")
     resolved_base = (
-        base_url
-        or env.get("LOXO_BASE_URL")
-        or profile_data.get("base_url")
-        or DEFAULT_BASE_URL
+        base_url or env.get("LOXO_BASE_URL") or profile_data.get("base_url") or DEFAULT_BASE_URL
     )
 
     if not resolved_key:
-        raise ConfigError(
-            "No API key found. Set --api-key, LOXO_API_KEY, or run `loxo configure`."
-        )
+        raise ConfigError("No API key found. Set --api-key, LOXO_API_KEY, or run `loxo configure`.")
     if not resolved_slug:
         raise ConfigError(
             "No agency slug found. Set --slug, LOXO_API_SLUG, or run `loxo configure`."

@@ -13,8 +13,10 @@ ENV = {"LOXO_API_KEY": "k", "LOXO_API_SLUG": "acme"}
 @respx.mock
 def test_deals_list():
     respx.get("https://app.loxo.co/api/acme/deals").mock(
-        return_value=httpx.Response(200, json={
-            "scroll_id": None, "deals": [{"id": 1, "name": "D1", "amount": 100.0}]}))
+        return_value=httpx.Response(
+            200, json={"scroll_id": None, "deals": [{"id": 1, "name": "D1", "amount": 100.0}]}
+        )
+    )
     result = runner.invoke(app, ["--json", "deals", "list"], env=ENV)
     assert json.loads(result.stdout)[0]["amount"] == 100.0
 
@@ -22,7 +24,8 @@ def test_deals_list():
 @respx.mock
 def test_deals_get_unwraps_envelope():
     respx.get("https://app.loxo.co/api/acme/deals/4").mock(
-        return_value=httpx.Response(200, json={"deal": {"id": 4, "name": "D"}}))
+        return_value=httpx.Response(200, json={"deal": {"id": 4, "name": "D"}})
+    )
     result = runner.invoke(app, ["--json", "deals", "get", "4"], env=ENV)
     assert json.loads(result.stdout)["id"] == 4
 
@@ -37,9 +40,9 @@ def test_deals_create_wraps_and_types_amount():
 
     respx.post("https://app.loxo.co/api/acme/deals").mock(side_effect=handler)
     result = runner.invoke(
-        app, ["--json", "deals", "create", "--name", "Big", "--amount", "2500",
-              "--person-id", "7"],
-        env=ENV)
+        app,
+        ["--json", "deals", "create", "--name", "Big", "--amount", "2500", "--person-id", "7"],
+        env=ENV,
+    )
     assert result.exit_code == 0
-    assert captured["body"] == {"deal": {"name": "Big", "amount": 2500.0,
-                                         "person_id": 7}}
+    assert captured["body"] == {"deal": {"name": "Big", "amount": 2500.0, "person_id": 7}}

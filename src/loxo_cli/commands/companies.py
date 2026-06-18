@@ -9,8 +9,7 @@ from loxo_cli.models.base import unwrap_envelope
 from loxo_cli.models.company import Company
 from loxo_cli.pagination import paginate
 
-companies_app = typer.Typer(
-    help="Manage companies. Unofficial — not affiliated with Loxo, Inc.")
+companies_app = typer.Typer(help="Manage companies. Unofficial — not affiliated with Loxo, Inc.")
 
 LIST_COLUMNS = ["id", "name", "url"]
 
@@ -19,10 +18,17 @@ def _list(state, query, all_pages, per_page):
     params = {"query": query} if query else {}
     client = state.client()
     if all_pages:
-        rows = [Company.model_validate(i)
-                for i in paginate(client, "companies", scheme="scroll_id",
-                                  items_key="companies", params=params,
-                                  per_page=per_page)]
+        rows = [
+            Company.model_validate(i)
+            for i in paginate(
+                client,
+                "companies",
+                scheme="scroll_id",
+                items_key="companies",
+                params=params,
+                per_page=per_page,
+            )
+        ]
     else:
         params["per_page"] = per_page
         data = client.get("companies", params=params)
@@ -43,7 +49,8 @@ def list_companies(
 @companies_app.command(
     "search",
     help="Search companies by query. NOTE: the company 'url' field is not a "
-         "searchable Lucene field; pass a bare domain as a full-text query.")
+    "searchable Lucene field; pass a bare domain as a full-text query.",
+)
 def search_companies(
     ctx: typer.Context,
     query: str = typer.Option(..., "--query", "-q"),
@@ -71,8 +78,7 @@ def create_company(
     state = ctx.obj
     raw = load_data(data)
     inner = raw.get("company", raw)
-    payload = build_payload("company", {"name": name, "url": url}, inner,
-                            parse_fields(field))
+    payload = build_payload("company", {"name": name, "url": url}, inner, parse_fields(field))
     result = state.client().post("companies", json=payload)
     state.emit(Company.model_validate(unwrap_envelope(result, "company")))
 
@@ -89,7 +95,6 @@ def update_company(
     state = ctx.obj
     raw = load_data(data)
     inner = raw.get("company", raw)
-    payload = build_payload("company", {"name": name, "url": url}, inner,
-                            parse_fields(field))
+    payload = build_payload("company", {"name": name, "url": url}, inner, parse_fields(field))
     result = state.client().put(f"companies/{company_id}", json=payload)
     state.emit(Company.model_validate(unwrap_envelope(result, "company")))

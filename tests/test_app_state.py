@@ -15,8 +15,14 @@ def test_appstate_settings_and_client(tmp_path):
         return_value=httpx.Response(200, json={"ok": True})
     )
     state = AppState(
-        profile=None, api_key="k", slug="acme", base_url=None,
-        json_out=True, jq=None, verbose=False, no_color=True,
+        profile=None,
+        api_key="k",
+        slug="acme",
+        base_url=None,
+        json_out=True,
+        jq=None,
+        verbose=False,
+        no_color=True,
     )
     assert state.settings().slug == "acme"
     assert state.client().get("ping") == {"ok": True}

@@ -33,8 +33,7 @@ def apply_jq(data: Any, expr: str) -> Any:
                 raise ValueError("'[]' applied to non-list")
             current = list(current)
         elif isinstance(current, list):
-            current = [item.get(token) if isinstance(item, dict) else None
-                       for item in current]
+            current = [item.get(token) if isinstance(item, dict) else None for item in current]
         elif isinstance(current, dict):
             current = current.get(token)
         else:

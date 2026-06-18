@@ -38,17 +38,24 @@ def test_scroll_id_pagination():
 def test_page_pagination():
     base = "https://app.loxo.co/api/acme/jobs"
     responses = [
-        httpx.Response(200, json={
-            "pagination": {"total_count": 3, "per_page": 2, "current_page": 1},
-            "results": [{"id": 1}, {"id": 2}]}),
-        httpx.Response(200, json={
-            "pagination": {"total_count": 3, "per_page": 2, "current_page": 2},
-            "results": [{"id": 3}]}),
+        httpx.Response(
+            200,
+            json={
+                "pagination": {"total_count": 3, "per_page": 2, "current_page": 1},
+                "results": [{"id": 1}, {"id": 2}],
+            },
+        ),
+        httpx.Response(
+            200,
+            json={
+                "pagination": {"total_count": 3, "per_page": 2, "current_page": 2},
+                "results": [{"id": 3}],
+            },
+        ),
     ]
     respx.get(base).mock(side_effect=responses)
     with LoxoClient(SETTINGS) as client:
-        items = list(paginate(client, "jobs", scheme="page", items_key="results",
-                              per_page=2))
+        items = list(paginate(client, "jobs", scheme="page", items_key="results", per_page=2))
     assert [i["id"] for i in items] == [1, 2, 3]
 
 

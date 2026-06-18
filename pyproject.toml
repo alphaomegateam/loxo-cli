@@ -45,8 +45,11 @@ src = ["src", "tests"]
 
 [tool.black]
 line-length = 100
+target-version = ["py311"]
 
 [tool.mypy]
 python_version = "3.11"
+mypy_path = "src"
 packages = ["loxo_cli"]
+explicit_package_bases = true
 ignore_missing_imports = true
