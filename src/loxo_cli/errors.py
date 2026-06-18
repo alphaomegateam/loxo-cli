@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import click
 
-# Subclassing click.ClickException is deliberate: Click's standalone mode
-# (used by both the installed `loxo` command AND typer.testing.CliRunner)
-# automatically catches ClickException, prints it to stderr, and calls
-# sys.exit(exc.exit_code). That gives every command the correct exit code
-# with no per-command try/except. ClickException still subclasses Exception,
-# so `pytest.raises(LoxoError)` and the `.status_code`/`.is_4xx` predicates
-# used by client.py and its tests keep working.
+# Subclassing click.ClickException gives these errors a `.exit_code` and a
+# `.format_message()`, and keeps them ordinary Exceptions so `pytest.raises`
+# and the `.status_code`/`.is_4xx` predicates used by client.py keep working.
+# NOTE: Typer's invocation path does NOT auto-honor a raised ClickException's
+# exit_code (it surfaces as a generic exit 1). The exit-code mapping is applied
+# by LoxoCommand.invoke in commands/_app.py, which every command uses via
+# LoxoTyper. `exit_code_for` below remains the single source of the mapping.
 
 
 class ConfigError(click.ClickException):

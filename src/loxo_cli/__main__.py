@@ -9,12 +9,13 @@ from rich.console import Console
 
 from loxo_cli import __version__
 from loxo_cli.client import LoxoClient, build_client
+from loxo_cli.commands._app import LoxoTyper
 from loxo_cli.config import LoxoSettings, load_settings
 from loxo_cli.output import render
 
 HELP_EPILOG = "Unofficial — not affiliated with Loxo, Inc."
 
-app = typer.Typer(
+app = LoxoTyper(
     help="loxo — command-line interface for the Loxo recruiting API.",
     epilog=HELP_EPILOG,
     no_args_is_help=True,
@@ -96,9 +97,9 @@ _api_cmd.register(app)
 
 
 def run() -> None:
-    # Click's standalone mode (inside app()) catches ClickException — which
-    # LoxoError and ConfigError both subclass — prints to stderr, and exits
-    # with exc.exit_code. No manual try/except needed.
+    # Exit-code mapping happens in LoxoCommand.invoke (see commands/_app.py):
+    # Typer does NOT honor a raised ClickException's exit_code, so each command
+    # converts LoxoError/ConfigError into typer.Exit with the mapped code.
     app()
 
 

@@ -5,7 +5,6 @@ from typing import Optional
 import typer
 
 from loxo_cli.commands._helpers import load_data, parse_fields
-from loxo_cli.errors import LoxoError
 from loxo_cli.pagination import detect_scheme, extract_items, paginate
 
 api_app = typer.Typer()
@@ -35,37 +34,32 @@ def api_command(
     body = load_data(data) or None
     client = state.client()
 
-    try:
-        if all_pages:
-            scheme = paginate_scheme
-            if scheme is None:
-                first = client.get(path, params=params)
-                scheme = detect_scheme(first)
-                # Collect first page items and build continuation params so we
-                # don't re-fetch the first page inside paginate().
-                first_items = extract_items(first, None)
-                cont_params = dict(params or {})
-                if scheme == "scroll_id" and isinstance(first, dict):
-                    next_sid = first.get("scroll_id")
-                    if next_sid:
-                        cont_params["scroll_id"] = next_sid
-                        items = first_items + list(
-                            paginate(client, path, scheme=scheme, params=cont_params)
-                        )
-                    else:
-                        items = first_items
+    if all_pages:
+        scheme = paginate_scheme
+        if scheme is None:
+            first = client.get(path, params=params)
+            scheme = detect_scheme(first)
+            # Collect first page items and build continuation params so we
+            # don't re-fetch the first page inside paginate().
+            first_items = extract_items(first, None)
+            cont_params = dict(params or {})
+            if scheme == "scroll_id" and isinstance(first, dict):
+                next_sid = first.get("scroll_id")
+                if next_sid:
+                    cont_params["scroll_id"] = next_sid
+                    items = first_items + list(
+                        paginate(client, path, scheme=scheme, params=cont_params)
+                    )
                 else:
-                    # For page / after_id schemes, fall back to re-paginating from
-                    # the start; the first-page data is small and the scheme is rare.
-                    items = list(paginate(client, path, scheme=scheme, params=params))
+                    items = first_items
             else:
+                # For page / after_id schemes, fall back to re-paginating from
+                # the start; the first-page data is small and the scheme is rare.
                 items = list(paginate(client, path, scheme=scheme, params=params))
-            state.emit(items)
-            return
+        else:
+            items = list(paginate(client, path, scheme=scheme, params=params))
+        state.emit(items)
+        return
 
-        result = client.request(method.upper(), path, params=params, json=body)
-        state.emit(result)
-
-    except LoxoError as e:
-        typer.echo(f"Error: {e.format_message()}", err=True)
-        raise typer.Exit(code=e.exit_code)
+    result = client.request(method.upper(), path, params=params, json=body)
+    state.emit(result)
