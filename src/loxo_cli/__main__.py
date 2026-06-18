@@ -104,9 +104,9 @@ app.add_typer(companies_app, name="companies")
 
 
 def run() -> None:
-    # Exit-code mapping happens in LoxoCommand.invoke (see commands/_app.py):
-    # Typer does NOT honor a raised ClickException's exit_code, so each command
-    # converts LoxoError/ConfigError into typer.Exit with the mapped code.
+    # Exit-code mapping happens in LoxoGroup.invoke (commands/_app.py, set via
+    # typer.Typer(cls=LoxoGroup)): Typer does NOT honor a raised ClickException's
+    # exit_code, so domain errors become typer.Exit with the mapped code.
     app()
 
 
