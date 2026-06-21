@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.2]
+
+### Fixed
+
+- `loxo ref custom-fields` (and `job-types`, `person-types`) no longer hammer the
+  API into rate-limiting (HTTP 429). These reference endpoints return their full
+  list in one response and ignore the `after_id` cursor, so the keyset paginator
+  looped forever. The paginator now stops when the cursor stops advancing, and
+  these endpoints are fetched in a single request.
+- `loxo ref activity-types` no longer fails: the `activity_types` endpoint
+  rejects `after_id` with HTTP 422, so it is now fetched without a cursor.
+- `loxo ref lists` now works. It targets the correct `person_lists` endpoint
+  (the previous `lists` path returned 404).
+
 ## [0.2.1]
 
 ### Fixed
