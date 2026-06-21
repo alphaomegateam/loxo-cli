@@ -102,3 +102,20 @@ def test_after_id_pagination():
     with LoxoClient(SETTINGS) as client:
         items = list(paginate(client, "source_types", scheme="after_id"))
     assert [i["id"] for i in items] == [10, 11, 12]
+
+
+@respx.mock
+def test_after_id_stops_when_cursor_does_not_advance():
+    # Some reference endpoints (e.g. dynamic_fields) return a fixed, complete
+    # list and IGNORE the after_id query param — so they hand back the same
+    # non-empty page on every request. The after_id paginator must detect the
+    # non-advancing cursor and stop, instead of looping forever and getting
+    # rate-limited (429). It must also not re-yield the duplicate page.
+    base = "https://app.loxo.co/api/acme/dynamic_fields"
+    same = [{"id": 1, "name": "custom_text_3"}, {"id": 2, "name": "custom_hierarchy_5"}]
+    route = respx.get(base).mock(return_value=httpx.Response(200, json=same))
+    with LoxoClient(SETTINGS) as client:
+        items = list(paginate(client, "dynamic_fields", scheme="after_id"))
+    assert [i["id"] for i in items] == [1, 2]
+    # One real page + one probe that proves the cursor didn't advance, then stop.
+    assert route.call_count == 2

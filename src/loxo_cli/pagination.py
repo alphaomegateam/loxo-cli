@@ -85,9 +85,22 @@ def paginate(
             items = extract_items(data, items_key)
             if not items:
                 return
-            yield from items
-            after_id = items[-1].get("id") if isinstance(items[-1], dict) else None
-            if after_id is None:
+            next_after_id = items[-1].get("id") if isinstance(items[-1], dict) else None
+            # If the endpoint ignored after_id and returned the same page again
+            # (some reference endpoints, e.g. dynamic_fields, return a fixed list
+            # and ignore the cursor), the cursor won't advance. Stop without
+            # re-yielding the duplicate page. Without this guard those endpoints
+            # loop forever, hammering the API until it rate-limits us (429).
+            # Only applies once a cursor has actually been sent: on the first
+            # page after_id is None, and a no-id last item there is a legitimate
+            # single, complete page that must still be yielded.
+            if after_id is not None and next_after_id == after_id:
                 return
+            yield from items
+            # Last item has no id -> can't build a next cursor, so this is the
+            # final page.
+            if next_after_id is None:
+                return
+            after_id = next_after_id
     else:
         raise ValueError(f"Unknown pagination scheme: {scheme}")
