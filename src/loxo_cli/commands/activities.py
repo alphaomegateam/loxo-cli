@@ -16,16 +16,19 @@ activities_app = typer.Typer(
 def list_activities(
     ctx: typer.Context,
     person_id: Optional[int] = typer.Option(None, "--person-id"),
-    job_id: Optional[int] = typer.Option(None, "--job-id"),
+    company_id: Optional[int] = typer.Option(None, "--company-id"),
     all_pages: bool = typer.Option(False, "--all"),
     per_page: int = typer.Option(50, "--per-page"),
 ) -> None:
+    # Loxo's person_events endpoint only accepts person_id / company_id as
+    # server-side filters. job_id is not a valid query param (returns 422), so
+    # it is intentionally not exposed here — filter by person or company instead.
     state = ctx.obj
     params: dict = {}
     if person_id is not None:
         params["person_id"] = person_id
-    if job_id is not None:
-        params["job_id"] = job_id
+    if company_id is not None:
+        params["company_id"] = company_id
     client = state.client()
     if all_pages:
         rows = list(

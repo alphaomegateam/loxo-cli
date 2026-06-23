@@ -22,6 +22,31 @@ def test_activities_list():
 
 
 @respx.mock
+def test_activities_list_filters_by_person_and_company():
+    route = respx.get("https://app.loxo.co/api/acme/person_events").mock(
+        return_value=httpx.Response(200, json={"scroll_id": None, "person_events": []})
+    )
+    result = runner.invoke(
+        app,
+        ["--json", "activities", "list", "--person-id", "50", "--company-id", "7"],
+        env=ENV,
+    )
+    assert result.exit_code == 0
+    assert dict(route.calls.last.request.url.params) == {
+        "person_id": "50",
+        "company_id": "7",
+        "per_page": "50",
+    }
+
+
+def test_activities_list_has_no_job_id_option():
+    # job_id is not a valid person_events query param (Loxo returns 422), so the
+    # list command must not advertise a --job-id filter.
+    result = runner.invoke(app, ["activities", "list", "--help"], env=ENV)
+    assert "--job-id" not in result.stdout
+
+
+@respx.mock
 def test_activities_add_wraps_person_event():
     captured = {}
 

@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.2.3]
+
+### Changed
+
+- `loxo activities list` drops the `--job-id` filter and gains `--company-id`.
+  Loxo's `person_events` endpoint rejects `job_id` as a query parameter (HTTP
+  422 `Invalid parameters: [:job_id]`), so the flag never worked. `person_id`
+  and `company_id` are the only server-side filters the endpoint accepts.
+  (`activities add --job-id` is unaffected — there `job_id` is a request-body
+  field, not a query parameter.)
+
 ## [0.2.2]
 
 ### Fixed
