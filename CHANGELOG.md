@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.3.0]
+
+### Added
+
+- `loxo ref custom-fields` gains `--object/-o` and `--custom-only`. `--object`
+  filters to one object's fields by matching `item_type` case-insensitively
+  (e.g. `--object deal`); an unknown value errors with the available object
+  types. `--custom-only` hides built-in fields, leaving just the agency-defined
+  ones. The table now shows `key`, `name`, and `type` (plus `item_type` when
+  unfiltered) instead of `id`/`name`, so the opaque keys (`custom_text_3`) map to
+  their plain-language names at a glance. `--json` carries the full field record
+  plus a derived flat `type`.
+
 ## [0.2.3]
 
 ### Changed

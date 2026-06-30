@@ -54,18 +54,100 @@ def test_ref_source_types_still_paginates():
     assert route.call_count == 3
 
 
+# A representative slice of GET /dynamic_fields: built-in and agency-defined
+# fields spread across more than one object (item_type).
+DYNAMIC_FIELDS = [
+    {
+        "id": 1,
+        "name": "Account manager",
+        "key": "owned_by_id",
+        "item_type": "Deal",
+        "dynamic_field_type": {"id": 3, "name": "Enumeration"},
+        "built_in": True,
+    },
+    {
+        "id": 2,
+        "name": "UTM Medium",
+        "key": "custom_text_3",
+        "item_type": "Deal",
+        "dynamic_field_type": {"id": 1, "name": "Text"},
+        "built_in": False,
+    },
+    {
+        "id": 3,
+        "name": "First Name",
+        "key": "first_name",
+        "item_type": "Person",
+        "dynamic_field_type": {"id": 1, "name": "Text"},
+        "built_in": True,
+    },
+]
+
+
 @respx.mock
 def test_ref_custom_fields_single_fetch():
     # dynamic_fields is a flat config list that ignores after_id, so the command
     # fetches it exactly once rather than driving the keyset paginator (which the
     # endpoint would loop forever, causing 429s). A single non-empty response is
-    # all the endpoint ever returns.
+    # all the endpoint ever returns. With no filter every field comes back, and
+    # each row now exposes its `key`.
     route = respx.get("https://app.loxo.co/api/acme/dynamic_fields").mock(
-        return_value=httpx.Response(200, json=[{"id": 1, "name": "custom_text_3"}])
+        return_value=httpx.Response(200, json=DYNAMIC_FIELDS)
     )
     result = runner.invoke(app, ["--json", "ref", "custom-fields"], env=ENV)
-    assert json.loads(result.stdout)[0]["name"] == "custom_text_3"
+    keys = [x["key"] for x in json.loads(result.stdout)]
+    assert keys == ["owned_by_id", "custom_text_3", "first_name"]
     assert route.call_count == 1
+
+
+@respx.mock
+def test_ref_custom_fields_filter_by_object():
+    # --object matches item_type case-insensitively and returns only that
+    # object's fields.
+    respx.get("https://app.loxo.co/api/acme/dynamic_fields").mock(
+        return_value=httpx.Response(200, json=DYNAMIC_FIELDS)
+    )
+    result = runner.invoke(app, ["--json", "ref", "custom-fields", "--object", "deal"], env=ENV)
+    rows = json.loads(result.stdout)
+    assert {x["item_type"] for x in rows} == {"Deal"}
+    assert [x["key"] for x in rows] == ["owned_by_id", "custom_text_3"]
+
+
+@respx.mock
+def test_ref_custom_fields_unknown_object_errors():
+    # An item_type that isn't present is a usage error that names the available
+    # object types.
+    respx.get("https://app.loxo.co/api/acme/dynamic_fields").mock(
+        return_value=httpx.Response(200, json=DYNAMIC_FIELDS)
+    )
+    result = runner.invoke(app, ["ref", "custom-fields", "--object", "bogus"], env=ENV)
+    assert result.exit_code == 2
+    combined = result.output + (result.stderr if result.stderr_bytes else "")
+    assert "Deal" in combined and "Person" in combined
+
+
+@respx.mock
+def test_ref_custom_fields_custom_only_drops_builtins():
+    # --custom-only keeps only agency-defined (built_in == False) fields.
+    respx.get("https://app.loxo.co/api/acme/dynamic_fields").mock(
+        return_value=httpx.Response(200, json=DYNAMIC_FIELDS)
+    )
+    result = runner.invoke(app, ["--json", "ref", "custom-fields", "--custom-only"], env=ENV)
+    rows = json.loads(result.stdout)
+    assert [x["key"] for x in rows] == ["custom_text_3"]
+
+
+@respx.mock
+def test_ref_custom_fields_json_carries_key_and_derived_type():
+    # JSON output preserves the full record and adds a flat `type` derived from
+    # dynamic_field_type.name.
+    respx.get("https://app.loxo.co/api/acme/dynamic_fields").mock(
+        return_value=httpx.Response(200, json=DYNAMIC_FIELDS)
+    )
+    result = runner.invoke(app, ["--json", "ref", "custom-fields", "--object", "deal"], env=ENV)
+    row = json.loads(result.stdout)[0]
+    assert row["key"] == "owned_by_id"
+    assert row["type"] == "Enumeration"
 
 
 @respx.mock
