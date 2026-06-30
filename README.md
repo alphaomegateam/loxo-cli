@@ -76,7 +76,9 @@ printed by `loxo configure list`, logged, or shown in `--verbose` output.
 
 Custom (dynamic) fields are supported on writes via repeatable `--field key=value`
 (use `key[]=value` to force a list, e.g. hierarchy fields). Discover valid keys with
-`loxo ref custom-fields`.
+`loxo ref custom-fields`, which maps each key (`custom_text_3`) to its plain-language
+name and type. Filter to one object with `--object deal` (matches the field's
+`item_type`, case-insensitive) and hide built-ins with `--custom-only`.
 
 ## Output
 

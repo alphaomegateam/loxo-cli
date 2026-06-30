@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any, Optional
+
 import typer
 
 from loxo_cli.pagination import extract_items, paginate
@@ -52,16 +54,58 @@ def lists(ctx: typer.Context) -> None:
     _list_reference(ctx, "person_lists", paginated=False)
 
 
+def _emit_custom_fields(
+    ctx: typer.Context, object_filter: Optional[str], custom_only: bool
+) -> None:
+    state = ctx.obj
+    # dynamic_fields returns its full config list in one response and ignores
+    # after_id, so fetch once (driving the keyset paginator would loop -> 429).
+    rows: list[dict[str, Any]] = extract_items(state.client().get("dynamic_fields"), None)
+    if object_filter:
+        wanted = object_filter.strip().lower()
+        available = sorted({r["item_type"] for r in rows if r.get("item_type")})
+        if wanted not in {a.lower() for a in available}:
+            raise typer.BadParameter(
+                f"Unknown object {object_filter!r}. Available: {', '.join(available)}",
+                param_hint="--object",
+            )
+        rows = [r for r in rows if (r.get("item_type") or "").lower() == wanted]
+    if custom_only:
+        rows = [r for r in rows if not r.get("built_in")]
+    for r in rows:
+        r["type"] = (r.get("dynamic_field_type") or {}).get("name")
+    # item_type is constant once filtered, so drop that column.
+    cols = ["key", "name", "type"] if object_filter else ["key", "name", "type", "item_type"]
+    state.emit(rows, columns=cols)
+
+
 @ref_app.command("custom-fields")
-def custom_fields(ctx: typer.Context) -> None:
+def custom_fields(
+    ctx: typer.Context,
+    object_filter: Optional[str] = typer.Option(
+        None,
+        "--object",
+        "-o",
+        help="Filter to one object's fields (matches item_type, case-insensitive).",
+    ),
+    custom_only: bool = typer.Option(
+        False,
+        "--custom-only",
+        help="Show only agency-defined fields (exclude built-ins).",
+    ),
+) -> None:
     """List agency custom (dynamic) field definitions."""
-    _list_reference(ctx, "dynamic_fields", paginated=False)
+    _emit_custom_fields(ctx, object_filter, custom_only)
 
 
 @ref_app.command("dynamic-fields", hidden=True)
-def dynamic_fields_alias(ctx: typer.Context) -> None:
+def dynamic_fields_alias(
+    ctx: typer.Context,
+    object_filter: Optional[str] = typer.Option(None, "--object", "-o"),
+    custom_only: bool = typer.Option(False, "--custom-only"),
+) -> None:
     """Alias of custom-fields."""
-    _list_reference(ctx, "dynamic_fields", paginated=False)
+    _emit_custom_fields(ctx, object_filter, custom_only)
 
 
 @ref_app.command("hierarchies")
