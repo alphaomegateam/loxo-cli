@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.4.1]
+
+### Fixed
+
+- `loxo deals list` no longer fails with HTTP 422 (`Invalid parameters:
+  [:per_page]`). The deals endpoint rejects `per_page` — it scroll_id-paginates
+  with a server-fixed page size — so the command no longer sends a page-size
+  parameter and the `--per-page` flag is dropped from `deals list` (it never
+  worked). `--all` still walks every page via the scroll cursor. `paginate()`
+  gained support for `per_page=None` to suppress the parameter.
+
 ## [0.4.0]
 
 ### Changed

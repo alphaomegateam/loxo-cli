@@ -33,7 +33,7 @@ def paginate(
     scheme: str,
     items_key: str | None = None,
     params: dict[str, Any] | None = None,
-    per_page: int = 50,
+    per_page: int | None = 50,
 ) -> Iterator[Any]:
     base_params = dict(params or {})
 
@@ -41,7 +41,8 @@ def paginate(
         scroll_id: str | None = None
         while True:
             page_params = dict(base_params)
-            page_params.setdefault("per_page", per_page)
+            if per_page is not None:
+                page_params.setdefault("per_page", per_page)
             if scroll_id:
                 page_params["scroll_id"] = scroll_id
             data = client.get(endpoint, params=page_params)
@@ -58,7 +59,8 @@ def paginate(
         while True:
             page_params = dict(base_params)
             page_params["page"] = page
-            page_params.setdefault("per_page", per_page)
+            if per_page is not None:
+                page_params.setdefault("per_page", per_page)
             data = client.get(endpoint, params=page_params)
             items = extract_items(data, items_key)
             if not items:
