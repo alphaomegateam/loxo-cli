@@ -4,6 +4,7 @@ from typing import Any, Optional
 
 import typer
 
+from loxo_cli.models.base import unwrap_envelope
 from loxo_cli.pagination import extract_items, paginate
 
 ref_app = typer.Typer(help="Reference data lookups. Unofficial — not affiliated with Loxo, Inc.")
@@ -108,9 +109,51 @@ def dynamic_fields_alias(
     _emit_custom_fields(ctx, object_filter, custom_only)
 
 
+def _resolve_dynamic_field_id(client: Any, field: str, object_filter: Optional[str]) -> int:
+    """Turn a FIELD argument (numeric id or field key) into a dynamic_field id."""
+    if field.isdigit():
+        return int(field)
+    rows = extract_items(client.get("dynamic_fields"), None)
+    matches = [r for r in rows if r.get("key") == field]
+    if not matches:
+        raise typer.BadParameter(f"No custom field with key {field!r}.", param_hint="FIELD")
+    if object_filter:
+        wanted = object_filter.strip().lower()
+        scoped = [r for r in matches if (r.get("item_type") or "").lower() == wanted]
+        if not scoped:
+            present = ", ".join(sorted({r["item_type"] for r in matches if r.get("item_type")}))
+            raise typer.BadParameter(
+                f"Key {field!r} is not on object {object_filter!r}; it exists on: {present}.",
+                param_hint="--object",
+            )
+        matches = scoped
+    if len(matches) > 1:
+        listed = ", ".join(
+            f"{r.get('item_type')} id={r['id']}"
+            for r in sorted(matches, key=lambda r: r.get("item_type") or "")
+        )
+        raise typer.BadParameter(
+            f"Key {field!r} matches multiple objects: {listed}. Use --object to disambiguate.",
+            param_hint="FIELD",
+        )
+    return int(matches[0]["id"])
+
+
 @ref_app.command("hierarchies")
-def hierarchies(ctx: typer.Context, dynamic_field_id: int = typer.Argument(...)) -> None:
-    """List hierarchy options for a hierarchy custom field."""
-    state = ctx.obj
-    data = state.client().get(f"dynamic_fields/{dynamic_field_id}/hierarchies")
-    state.emit(extract_items(data, "hierarchies"), columns=COLUMNS)
+def hierarchies(
+    ctx: typer.Context,
+    field: str = typer.Argument(
+        ..., metavar="FIELD", help="Dynamic field id or key (e.g. custom_hierarchy_4)."
+    ),
+    object_filter: Optional[str] = typer.Option(
+        None,
+        "--object",
+        "-o",
+        help="Disambiguate a key by object (matches item_type, case-insensitive).",
+    ),
+) -> None:
+    """List the options for a hierarchy custom field, by id or key."""
+    client = ctx.obj.client()
+    field_id = _resolve_dynamic_field_id(client, field, object_filter)
+    detail = unwrap_envelope(client.get(f"dynamic_fields/{field_id}"), "dynamic_field")
+    ctx.obj.emit(extract_items(detail, "hierarchies"), columns=COLUMNS)

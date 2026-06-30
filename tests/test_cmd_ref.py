@@ -167,10 +167,100 @@ def test_ref_lists_uses_person_lists_endpoint():
     assert lists_route.call_count == 0  # must not hit the 404 path
 
 
+# The same hierarchy key is reused across objects with distinct ids, so a key
+# lookup is ambiguous without --object.
+HIER_FIELDS = [
+    {
+        "id": 100,
+        "name": "Website Lead",
+        "key": "custom_hierarchy_4",
+        "item_type": "Deal",
+        "dynamic_field_type": {"id": 6, "name": "Hierarchy"},
+        "built_in": False,
+    },
+    {
+        "id": 200,
+        "name": "Hires for",
+        "key": "custom_hierarchy_4",
+        "item_type": "Person",
+        "dynamic_field_type": {"id": 6, "name": "Hierarchy"},
+        "built_in": False,
+    },
+]
+
+# GET dynamic_fields/{id} (detail) embeds the field's own option list under
+# `hierarchies` — this is the real per-field option set.
+DEAL_FIELD_DETAIL = {
+    "id": 100,
+    "name": "Website Lead",
+    "key_for_inline_edit": "custom_hierarchy_4",
+    "item_type": "Deal",
+    "dynamic_field_type": {"id": 6, "name": "Hierarchy"},
+    "hierarchies": [{"id": 6251428, "name": "Yes", "hierarchies": []}],
+    "built_in": False,
+}
+
+
 @respx.mock
-def test_ref_hierarchies():
-    respx.get("https://app.loxo.co/api/acme/dynamic_fields/7/hierarchies").mock(
-        return_value=httpx.Response(200, json={"hierarchies": [{"id": 1, "name": "L1"}]})
+def test_ref_hierarchies_numeric_id_uses_detail_endpoint():
+    # A numeric id fetches the field DETAIL and emits its embedded options, NOT
+    # the global taxonomy from the /hierarchies subpath.
+    detail = respx.get("https://app.loxo.co/api/acme/dynamic_fields/100").mock(
+        return_value=httpx.Response(200, json=DEAL_FIELD_DETAIL)
     )
-    result = runner.invoke(app, ["--json", "ref", "hierarchies", "7"], env=ENV)
-    assert json.loads(result.stdout)[0]["name"] == "L1"
+    legacy = respx.get("https://app.loxo.co/api/acme/dynamic_fields/100/hierarchies").mock(
+        return_value=httpx.Response(200, json={"hierarchies": [{"id": 1, "name": "GLOBAL"}]})
+    )
+    result = runner.invoke(app, ["--json", "ref", "hierarchies", "100"], env=ENV)
+    rows = json.loads(result.stdout)
+    assert [(r["id"], r["name"]) for r in rows] == [(6251428, "Yes")]
+    assert detail.call_count == 1
+    assert legacy.call_count == 0
+
+
+@respx.mock
+def test_ref_hierarchies_by_key_scoped_to_object():
+    respx.get("https://app.loxo.co/api/acme/dynamic_fields").mock(
+        return_value=httpx.Response(200, json=HIER_FIELDS)
+    )
+    respx.get("https://app.loxo.co/api/acme/dynamic_fields/100").mock(
+        return_value=httpx.Response(200, json=DEAL_FIELD_DETAIL)
+    )
+    result = runner.invoke(
+        app, ["--json", "ref", "hierarchies", "custom_hierarchy_4", "--object", "deal"], env=ENV
+    )
+    assert [r["name"] for r in json.loads(result.stdout)] == ["Yes"]
+
+
+@respx.mock
+def test_ref_hierarchies_ambiguous_key_errors():
+    # custom_hierarchy_4 exists on Deal and Person; without --object it's
+    # ambiguous and the error lists the matches.
+    respx.get("https://app.loxo.co/api/acme/dynamic_fields").mock(
+        return_value=httpx.Response(200, json=HIER_FIELDS)
+    )
+    result = runner.invoke(app, ["ref", "hierarchies", "custom_hierarchy_4"], env=ENV)
+    assert result.exit_code == 2
+    combined = result.output + (result.stderr if result.stderr_bytes else "")
+    assert "Deal" in combined and "Person" in combined
+
+
+@respx.mock
+def test_ref_hierarchies_key_object_no_match_errors():
+    # The key isn't present on the requested object.
+    respx.get("https://app.loxo.co/api/acme/dynamic_fields").mock(
+        return_value=httpx.Response(200, json=HIER_FIELDS)
+    )
+    result = runner.invoke(
+        app, ["ref", "hierarchies", "custom_hierarchy_4", "--object", "company"], env=ENV
+    )
+    assert result.exit_code == 2
+
+
+@respx.mock
+def test_ref_hierarchies_unknown_key_errors():
+    respx.get("https://app.loxo.co/api/acme/dynamic_fields").mock(
+        return_value=httpx.Response(200, json=HIER_FIELDS)
+    )
+    result = runner.invoke(app, ["ref", "hierarchies", "custom_text_99"], env=ENV)
+    assert result.exit_code == 2

@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.4.0]
+
+### Changed
+
+- `loxo ref hierarchies` now returns a hierarchy field's **own** options
+  (name + id) instead of the agency-wide taxonomy. It previously called
+  `GET dynamic_fields/{id}/hierarchies`, which ignored the id and returned the
+  global hierarchy tree (~1130 rows) for every field; it now reads the field
+  detail (`GET dynamic_fields/{id}`) and emits its embedded `hierarchies`.
+
+### Added
+
+- `loxo ref hierarchies` accepts a field **key** (e.g. `custom_hierarchy_4`) in
+  place of the numeric id, plus `--object/-o` to disambiguate. Because the same
+  key is reused across objects (Person/Company/Deal each have their own
+  `custom_hierarchy_4`), an ambiguous key without `--object` errors with the
+  matching `item_type`/id pairs; an unknown key or a key absent from the chosen
+  object also errors.
+
 ## [0.3.0]
 
 ### Added
