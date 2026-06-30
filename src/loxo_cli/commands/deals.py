@@ -29,8 +29,10 @@ def list_deals(
     ctx: typer.Context,
     query: Optional[str] = typer.Option(None, "--query", "-q"),
     all_pages: bool = typer.Option(False, "--all"),
-    per_page: int = typer.Option(50, "--per-page"),
 ) -> None:
+    # The deals endpoint rejects per_page (HTTP 422 "Invalid parameters:
+    # [:per_page]"); it scroll_id-paginates with a server-fixed page size, so we
+    # never send a page-size parameter.
     state = ctx.obj
     params: dict[str, Any] = {"query": query} if query else {}
     client = state.client()
@@ -43,11 +45,10 @@ def list_deals(
                 scheme="scroll_id",
                 items_key="deals",
                 params=params,
-                per_page=per_page,
+                per_page=None,
             )
         ]
     else:
-        params["per_page"] = per_page
         data = client.get("deals", params=params)
         rows = [Deal.model_validate(i) for i in data.get("deals", [])]
     state.emit(rows, columns=LIST_COLUMNS)
