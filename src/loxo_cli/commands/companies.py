@@ -14,7 +14,10 @@ companies_app = typer.Typer(help="Manage companies. Unofficial — not affiliate
 LIST_COLUMNS = ["id", "name", "url"]
 
 
-def _list(state, query, all_pages, per_page):
+def _list(state, query, all_pages):
+    # The companies endpoint rejects per_page (HTTP 422 "Invalid parameters:
+    # [:per_page]"); it scroll_id-paginates with a server-fixed page size, so we
+    # never send a page-size parameter.
     params = {"query": query} if query else {}
     client = state.client()
     if all_pages:
@@ -26,11 +29,10 @@ def _list(state, query, all_pages, per_page):
                 scheme="scroll_id",
                 items_key="companies",
                 params=params,
-                per_page=per_page,
+                per_page=None,
             )
         ]
     else:
-        params["per_page"] = per_page
         data = client.get("companies", params=params)
         rows = [Company.model_validate(i) for i in data.get("companies", [])]
     state.emit(rows, columns=LIST_COLUMNS)
@@ -41,9 +43,8 @@ def list_companies(
     ctx: typer.Context,
     query: Optional[str] = typer.Option(None, "--query", "-q"),
     all_pages: bool = typer.Option(False, "--all"),
-    per_page: int = typer.Option(50, "--per-page"),
 ) -> None:
-    _list(ctx.obj, query, all_pages, per_page)
+    _list(ctx.obj, query, all_pages)
 
 
 @companies_app.command(
@@ -55,9 +56,8 @@ def search_companies(
     ctx: typer.Context,
     query: str = typer.Option(..., "--query", "-q"),
     all_pages: bool = typer.Option(False, "--all"),
-    per_page: int = typer.Option(50, "--per-page"),
 ) -> None:
-    _list(ctx.obj, query, all_pages, per_page)
+    _list(ctx.obj, query, all_pages)
 
 
 @companies_app.command("get")

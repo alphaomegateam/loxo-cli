@@ -12,13 +12,42 @@ ENV = {"LOXO_API_KEY": "k", "LOXO_API_SLUG": "acme"}
 
 @respx.mock
 def test_companies_list():
-    respx.get("https://app.loxo.co/api/acme/companies").mock(
-        return_value=httpx.Response(
+    # The companies endpoint rejects per_page with HTTP 422 (like deals); it
+    # scroll_id-paginates with a server-fixed page size, so the command must not
+    # send per_page.
+    seen = {}
+
+    def handler(request):
+        seen["params"] = dict(request.url.params)
+        return httpx.Response(
             200, json={"scroll_id": None, "companies": [{"id": 1, "name": "Acme"}]}
         )
-    )
+
+    respx.get("https://app.loxo.co/api/acme/companies").mock(side_effect=handler)
     result = runner.invoke(app, ["--json", "companies", "list"], env=ENV)
+    assert result.exit_code == 0
+    assert "per_page" not in seen["params"]
     assert json.loads(result.stdout)[0]["name"] == "Acme"
+
+
+@respx.mock
+def test_companies_list_all_omits_per_page():
+    seen = []
+
+    def handler(request):
+        params = dict(request.url.params)
+        seen.append(params)
+        if "scroll_id" not in params:
+            return httpx.Response(
+                200, json={"scroll_id": "abc", "companies": [{"id": 1, "name": "Acme"}]}
+            )
+        return httpx.Response(200, json={"scroll_id": None, "companies": []})
+
+    respx.get("https://app.loxo.co/api/acme/companies").mock(side_effect=handler)
+    result = runner.invoke(app, ["--json", "companies", "list", "--all"], env=ENV)
+    assert result.exit_code == 0
+    assert all("per_page" not in p for p in seen)
+    assert [c["id"] for c in json.loads(result.stdout)] == [1]
 
 
 @respx.mock
@@ -39,6 +68,7 @@ def test_companies_search_passes_query():
     result = runner.invoke(app, ["--json", "companies", "search", "--query", "acme.com"], env=ENV)
     assert result.exit_code == 0
     assert route.calls.last.request.url.params["query"] == "acme.com"
+    assert "per_page" not in route.calls.last.request.url.params
 
 
 @respx.mock

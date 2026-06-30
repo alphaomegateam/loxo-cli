@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.4.2]
+
+### Fixed
+
+- `loxo companies list` and `loxo companies search` no longer fail with HTTP 422
+  (`Invalid parameters: [:per_page]`) — the same issue fixed for deals in 0.4.1.
+  The companies endpoint rejects `per_page` (it scroll_id-paginates with a
+  server-fixed page size), so the commands no longer send a page-size parameter
+  and the `--per-page` flag is dropped from both. `--all` still walks every page
+  via the scroll cursor.
+
+  Audited every other supported endpoint: `people`, `jobs`, `person_events`
+  (activities), and `jobs/{id}/candidates` all accept `per_page`; `webhooks`
+  rejects it but the CLI never sends it there. No other commands are affected.
+
 ## [0.4.1]
 
 ### Fixed
