@@ -4,8 +4,10 @@ from typing import Optional
 
 import typer
 
-from loxo_cli.commands._helpers import build_payload, load_data, parse_fields
+from loxo_cli.commands._helpers import apply_filters, build_payload, load_data, parse_fields
 from loxo_cli.pagination import paginate
+
+FILTER_HELP = "Exact client-side match key=value on returned records (repeatable)."
 
 activities_app = typer.Typer(
     help="Manage person events/activities. Unofficial — not affiliated with Loxo, Inc."
@@ -19,6 +21,7 @@ def list_activities(
     company_id: Optional[int] = typer.Option(None, "--company-id"),
     all_pages: bool = typer.Option(False, "--all"),
     per_page: int = typer.Option(50, "--per-page"),
+    filter_: list[str] = typer.Option([], "--filter", help=FILTER_HELP),
 ) -> None:
     # Loxo's person_events endpoint only accepts person_id / company_id as
     # server-side filters. job_id is not a valid query param (returns 422), so
@@ -45,6 +48,7 @@ def list_activities(
         params["per_page"] = per_page
         data = client.get("person_events", params=params)
         rows = data.get("person_events", []) if isinstance(data, dict) else data
+    rows = apply_filters(rows, filter_)
     state.emit(rows, columns=["id", "activity_type_id", "person_id", "notes"])
 
 

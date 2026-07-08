@@ -41,6 +41,41 @@ def parse_fields(fields: list[str]) -> dict[str, Any]:
     return result
 
 
+QUERY_HELP = "Ranked full-text search (not an exact filter); returns relevance-ordered matches."
+
+
+def apply_filters(items: list[Any], filters: list[str]) -> list[Any]:
+    """Post-filter API records by exact field match, client-side.
+
+    Each filter is ``key=value``. Because the Loxo ``query`` parameter is a
+    ranked full-text search rather than a filter, this narrows a result set
+    down to exact matches. For object-valued fields (e.g. ``status`` is
+    ``{"id": ..., "name": "Active"}``) the value is matched against the
+    object's ``name`` (then ``id``), so ``--filter status=Active`` works.
+    """
+    if not filters:
+        return items
+    pairs: list[tuple[str, str]] = []
+    for item in filters:
+        if "=" not in item:
+            raise typer.BadParameter(f"--filter must be key=value, got {item!r}")
+        key, value = item.split("=", 1)
+        pairs.append((key, value))
+
+    def matches(record: Any) -> bool:
+        if not isinstance(record, dict):
+            return False
+        for key, value in pairs:
+            actual = record.get(key)
+            if isinstance(actual, dict):
+                actual = actual.get("name", actual.get("id"))
+            if actual is None or str(actual) != value:
+                return False
+        return True
+
+    return [item for item in items if matches(item)]
+
+
 def build_payload(resource_key: str, typed: dict, data: dict, fields: dict) -> dict:
     merged: dict[str, Any] = dict(data)
     merged.update({k: v for k, v in typed.items() if v is not None})

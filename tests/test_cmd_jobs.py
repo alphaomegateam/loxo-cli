@@ -36,6 +36,59 @@ def test_jobs_list_page_pagination():
 
 
 @respx.mock
+def test_jobs_list_status_object_does_not_crash():
+    # Regression for issue #6: status comes back as an object.
+    respx.get("https://app.loxo.co/api/acme/jobs").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "pagination": {"total_count": 1, "per_page": 50, "current_page": 1},
+                "results": [{"id": 1, "title": "VP", "status": {"id": 70251, "name": "Active"}}],
+            },
+        )
+    )
+    result = runner.invoke(app, ["--json", "jobs", "list"], env=ENV)
+    assert result.exit_code == 0
+    assert json.loads(result.stdout)[0]["status"] == {"id": 70251, "name": "Active"}
+
+
+@respx.mock
+def test_jobs_list_status_object_renders_name_in_table():
+    respx.get("https://app.loxo.co/api/acme/jobs").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "pagination": {"total_count": 1, "per_page": 50, "current_page": 1},
+                "results": [{"id": 1, "title": "VP", "status": {"id": 70251, "name": "Active"}}],
+            },
+        )
+    )
+    result = runner.invoke(app, ["jobs", "list"], env=ENV)
+    assert result.exit_code == 0
+    assert "Active" in result.stdout
+
+
+@respx.mock
+def test_jobs_list_filter_narrows_by_object_name():
+    # Client-side --filter matches nested object 'name' (issue #10).
+    respx.get("https://app.loxo.co/api/acme/jobs").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "pagination": {"total_count": 2, "per_page": 50, "current_page": 1},
+                "results": [
+                    {"id": 1, "title": "A", "status": {"id": 1, "name": "Active"}},
+                    {"id": 2, "title": "B", "status": {"id": 2, "name": "Closed"}},
+                ],
+            },
+        )
+    )
+    result = runner.invoke(app, ["--json", "jobs", "list", "--filter", "status=Active"], env=ENV)
+    assert result.exit_code == 0
+    assert [j["id"] for j in json.loads(result.stdout)] == [1]
+
+
+@respx.mock
 def test_jobs_get():
     respx.get("https://app.loxo.co/api/acme/jobs/7").mock(
         return_value=httpx.Response(200, json={"id": 7, "title": "Eng"})

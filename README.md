@@ -86,7 +86,26 @@ its options (name + id); the FIELD argument also accepts the numeric field id.
 
 On a terminal, list and object results render as Rich tables. Pipe the command or pass
 `--json` to get machine-readable JSON; `--jq '<path>'` applies a small built-in selector
-(e.g. `--jq '.[].id'`) without needing the `jq` binary.
+(e.g. `--jq '.results'`, `--jq '.[].id'`, `--jq '.results.0.title'` — the leading `.` is
+optional) without needing the `jq` binary.
+
+`--json` output is always plain (never ANSI-colored) so it can be piped straight into
+`jq`, `json.loads`, etc. Table color is disabled automatically when stdout is not a
+terminal, and can be turned off explicitly with `--no-color` or the
+[`NO_COLOR`](https://no-color.org/) environment variable.
+
+## Filtering vs. search
+
+`--query`/`-q` (and `api ... -p query=`) is a **ranked full-text search**, not an exact
+filter: the API returns a broad, relevance-ordered set (e.g. `-q "VP of Digital"` also
+matches unrelated `VP *` roles further down). To narrow a result set to exact matches, add
+`--filter field=value` (repeatable) on list commands — it post-filters the returned records
+client-side. Object-valued fields match on their name, so `--filter status=Active` matches a
+`status` of `{"id": 70251, "name": "Active"}`. Example:
+
+```bash
+loxo jobs list -q "VP of Digital" --filter status=Active
+```
 
 ## Exit codes
 

@@ -4,7 +4,13 @@ from typing import Any, Optional
 
 import typer
 
-from loxo_cli.commands._helpers import build_payload, load_data, parse_fields
+from loxo_cli.commands._helpers import (
+    QUERY_HELP,
+    apply_filters,
+    build_payload,
+    load_data,
+    parse_fields,
+)
 from loxo_cli.models.base import unwrap_envelope
 from loxo_cli.models.deal import Deal
 from loxo_cli.pagination import paginate
@@ -12,6 +18,7 @@ from loxo_cli.pagination import paginate
 deals_app = typer.Typer(help="Manage deals. Unofficial — not affiliated with Loxo, Inc.")
 
 LIST_COLUMNS = ["id", "name", "amount"]
+FILTER_HELP = "Exact client-side match key=value on returned records (repeatable)."
 
 
 def _typed(name, amount, person_id, company_id, job_id):
@@ -27,8 +34,9 @@ def _typed(name, amount, person_id, company_id, job_id):
 @deals_app.command("list")
 def list_deals(
     ctx: typer.Context,
-    query: Optional[str] = typer.Option(None, "--query", "-q"),
+    query: Optional[str] = typer.Option(None, "--query", "-q", help=QUERY_HELP),
     all_pages: bool = typer.Option(False, "--all"),
+    filter_: list[str] = typer.Option([], "--filter", help=FILTER_HELP),
 ) -> None:
     # The deals endpoint rejects per_page (HTTP 422 "Invalid parameters:
     # [:per_page]"); it scroll_id-paginates with a server-fixed page size, so we
@@ -37,9 +45,8 @@ def list_deals(
     params: dict[str, Any] = {"query": query} if query else {}
     client = state.client()
     if all_pages:
-        rows = [
-            Deal.model_validate(i)
-            for i in paginate(
+        items = list(
+            paginate(
                 client,
                 "deals",
                 scheme="scroll_id",
@@ -47,10 +54,11 @@ def list_deals(
                 params=params,
                 per_page=None,
             )
-        ]
+        )
     else:
         data = client.get("deals", params=params)
-        rows = [Deal.model_validate(i) for i in data.get("deals", [])]
+        items = data.get("deals", [])
+    rows = [Deal.model_validate(i) for i in apply_filters(items, filter_)]
     state.emit(rows, columns=LIST_COLUMNS)
 
 

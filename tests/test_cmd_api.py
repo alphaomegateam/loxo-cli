@@ -66,6 +66,26 @@ def test_api_all_autopaginates():
 
 
 @respx.mock
+def test_api_all_scroll_omits_per_page():
+    # Issue #9: scroll endpoints (e.g. companies) reject per_page with HTTP 422,
+    # so `api --all` must not send it for the scroll_id scheme.
+    seen = []
+
+    def handler(request):
+        params = dict(request.url.params)
+        seen.append(params)
+        if "scroll_id" not in params:
+            return httpx.Response(200, json={"scroll_id": "abc", "companies": [{"id": 1}]})
+        return httpx.Response(200, json={"scroll_id": None, "companies": []})
+
+    respx.get("https://app.loxo.co/api/acme/companies").mock(side_effect=handler)
+    result = runner.invoke(app, ["--json", "api", "GET", "companies", "--all"], env=ENV)
+    assert result.exit_code == 0
+    assert all("per_page" not in p for p in seen)
+    assert [c["id"] for c in json.loads(result.stdout)] == [1]
+
+
+@respx.mock
 def test_api_404_exit_code_4():
     respx.get("https://app.loxo.co/api/acme/people/9").mock(
         return_value=httpx.Response(404, text="nope")

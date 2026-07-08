@@ -3,7 +3,43 @@ import io
 import pytest
 import typer
 
-from loxo_cli.commands._helpers import build_payload, load_data, parse_fields
+from loxo_cli.commands._helpers import (
+    apply_filters,
+    build_payload,
+    load_data,
+    parse_fields,
+)
+
+
+def test_apply_filters_empty_is_passthrough():
+    items = [{"id": 1}, {"id": 2}]
+    assert apply_filters(items, []) is items
+
+
+def test_apply_filters_exact_scalar():
+    items = [{"id": 1, "title": "A"}, {"id": 2, "title": "B"}]
+    assert apply_filters(items, ["title=A"]) == [{"id": 1, "title": "A"}]
+
+
+def test_apply_filters_matches_object_name():
+    items = [
+        {"id": 1, "status": {"id": 1, "name": "Active"}},
+        {"id": 2, "status": {"id": 2, "name": "Closed"}},
+    ]
+    assert [i["id"] for i in apply_filters(items, ["status=Active"])] == [1]
+
+
+def test_apply_filters_multiple_are_anded():
+    items = [
+        {"id": 1, "title": "A", "stage": "x"},
+        {"id": 2, "title": "A", "stage": "y"},
+    ]
+    assert [i["id"] for i in apply_filters(items, ["title=A", "stage=y"])] == [2]
+
+
+def test_apply_filters_bad_pair_raises():
+    with pytest.raises(typer.BadParameter):
+        apply_filters([{"id": 1}], ["broken"])
 
 
 def test_load_data_none():

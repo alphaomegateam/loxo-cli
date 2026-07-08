@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.5.0]
+
+### Fixed
+
+- `loxo jobs list` no longer crashes with a Pydantic `ValidationError`: the
+  Loxo API returns `status` as a nested object (`{"id", "name"}`), not a string,
+  so `Job.status` now accepts an object (a bare string still validates too).
+  Tables show the object's `name` (e.g. `Active`) instead of raw JSON. (#6)
+- `--json` output is no longer ANSI-colorized. Rich was forcing color into
+  pipes whenever `FORCE_COLOR` was set, wrapping the JSON in escape codes and
+  breaking `json.loads`/`--jq`. JSON is now always emitted plain. Table color is
+  also disabled when stdout is not a TTY, and `--no-color` / `NO_COLOR` are
+  honored. (#7)
+- `--jq` now accepts bare key paths (`results`, `results.0.title`) in addition
+  to leading-dot paths (`.results`), supports numeric list indexes, and reports
+  a clean `Error:` message instead of a raw `ValueError` traceback on an
+  unusable expression. (#8)
+- `loxo api ... --all` no longer sends `per_page` to scroll (`scroll_id`)
+  endpoints, which rejected it with HTTP 422 (e.g. `companies`). (#9)
+
+### Added
+
+- `--filter field=value` (repeatable) on list commands post-filters the
+  returned records client-side by exact match. Object-valued fields match on
+  their `name`, so `--filter status=Active` works. This complements `--query`,
+  which is a ranked full-text search rather than an exact filter. (#10)
+
+### Changed
+
+- `--query`/`-q` help now states it is a ranked full-text search, not a filter;
+  the README documents the query-vs-`--filter` distinction. (#10)
+- `api --raw` help text corrected: it is a no-op, and raw JSON requires the
+  global `--json` flag (without it the response renders as a table). (#11)
+
 ## [0.4.2]
 
 ### Fixed

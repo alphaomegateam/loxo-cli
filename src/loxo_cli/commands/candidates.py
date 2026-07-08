@@ -4,7 +4,7 @@ from typing import Optional
 
 import typer
 
-from loxo_cli.commands._helpers import load_data, parse_fields
+from loxo_cli.commands._helpers import apply_filters, load_data, parse_fields
 from loxo_cli.models.candidate import Candidate
 from loxo_cli.pagination import paginate
 
@@ -13,6 +13,7 @@ candidates_app = typer.Typer(
 )
 
 LIST_COLUMNS = ["id", "person_id", "job_id"]
+FILTER_HELP = "Exact client-side match key=value on returned records (repeatable)."
 
 
 @candidates_app.command("list")
@@ -21,20 +22,21 @@ def list_candidates(
     job: int = typer.Option(..., "--job", "-j"),
     all_pages: bool = typer.Option(False, "--all"),
     per_page: int = typer.Option(50, "--per-page"),
+    filter_: list[str] = typer.Option([], "--filter", help=FILTER_HELP),
 ) -> None:
     state = ctx.obj
     endpoint = f"jobs/{job}/candidates"
     client = state.client()
     if all_pages:
-        rows = [
-            Candidate.model_validate(i)
-            for i in paginate(
+        items = list(
+            paginate(
                 client, endpoint, scheme="scroll_id", items_key="candidates", per_page=per_page
             )
-        ]
+        )
     else:
         data = client.get(endpoint, params={"per_page": per_page})
-        rows = [Candidate.model_validate(i) for i in data.get("candidates", [])]
+        items = data.get("candidates", [])
+    rows = [Candidate.model_validate(i) for i in apply_filters(items, filter_)]
     state.emit(rows, columns=LIST_COLUMNS)
 
 

@@ -4,7 +4,13 @@ from typing import Optional
 
 import typer
 
-from loxo_cli.commands._helpers import build_payload, load_data, parse_fields
+from loxo_cli.commands._helpers import (
+    QUERY_HELP,
+    apply_filters,
+    build_payload,
+    load_data,
+    parse_fields,
+)
 from loxo_cli.models.base import unwrap_envelope
 from loxo_cli.models.company import Company
 from loxo_cli.pagination import paginate
@@ -12,18 +18,18 @@ from loxo_cli.pagination import paginate
 companies_app = typer.Typer(help="Manage companies. Unofficial — not affiliated with Loxo, Inc.")
 
 LIST_COLUMNS = ["id", "name", "url"]
+FILTER_HELP = "Exact client-side match key=value on returned records (repeatable)."
 
 
-def _list(state, query, all_pages):
+def _list(state, query, all_pages, filters=None):
     # The companies endpoint rejects per_page (HTTP 422 "Invalid parameters:
     # [:per_page]"); it scroll_id-paginates with a server-fixed page size, so we
     # never send a page-size parameter.
     params = {"query": query} if query else {}
     client = state.client()
     if all_pages:
-        rows = [
-            Company.model_validate(i)
-            for i in paginate(
+        items = list(
+            paginate(
                 client,
                 "companies",
                 scheme="scroll_id",
@@ -31,20 +37,22 @@ def _list(state, query, all_pages):
                 params=params,
                 per_page=None,
             )
-        ]
+        )
     else:
         data = client.get("companies", params=params)
-        rows = [Company.model_validate(i) for i in data.get("companies", [])]
+        items = data.get("companies", [])
+    rows = [Company.model_validate(i) for i in apply_filters(items, filters or [])]
     state.emit(rows, columns=LIST_COLUMNS)
 
 
 @companies_app.command("list")
 def list_companies(
     ctx: typer.Context,
-    query: Optional[str] = typer.Option(None, "--query", "-q"),
+    query: Optional[str] = typer.Option(None, "--query", "-q", help=QUERY_HELP),
     all_pages: bool = typer.Option(False, "--all"),
+    filter_: list[str] = typer.Option([], "--filter", help=FILTER_HELP),
 ) -> None:
-    _list(ctx.obj, query, all_pages)
+    _list(ctx.obj, query, all_pages, filter_)
 
 
 @companies_app.command(
@@ -54,10 +62,11 @@ def list_companies(
 )
 def search_companies(
     ctx: typer.Context,
-    query: str = typer.Option(..., "--query", "-q"),
+    query: str = typer.Option(..., "--query", "-q", help=QUERY_HELP),
     all_pages: bool = typer.Option(False, "--all"),
+    filter_: list[str] = typer.Option([], "--filter", help=FILTER_HELP),
 ) -> None:
-    _list(ctx.obj, query, all_pages)
+    _list(ctx.obj, query, all_pages, filter_)
 
 
 @companies_app.command("get")

@@ -4,7 +4,13 @@ from typing import Any, Optional
 
 import typer
 
-from loxo_cli.commands._helpers import build_payload, load_data, parse_fields
+from loxo_cli.commands._helpers import (
+    QUERY_HELP,
+    apply_filters,
+    build_payload,
+    load_data,
+    parse_fields,
+)
 from loxo_cli.models.person import Person
 from loxo_cli.models.base import unwrap_envelope
 from loxo_cli.pagination import paginate
@@ -12,22 +18,23 @@ from loxo_cli.pagination import paginate
 people_app = typer.Typer(help="Manage people. Unofficial — not affiliated with Loxo, Inc.")
 
 LIST_COLUMNS = ["id", "name", "title", "linkedin_url"]
+FILTER_HELP = "Exact client-side match key=value on returned records (repeatable)."
 
 
 @people_app.command("list")
 def list_people(
     ctx: typer.Context,
-    query: Optional[str] = typer.Option(None, "--query", "-q", help="Lucene search."),
+    query: Optional[str] = typer.Option(None, "--query", "-q", help=QUERY_HELP),
     all_pages: bool = typer.Option(False, "--all", help="Fetch all pages."),
     per_page: int = typer.Option(50, "--per-page", help="Page size."),
+    filter_: list[str] = typer.Option([], "--filter", help=FILTER_HELP),
 ) -> None:
     state = ctx.obj
     params: dict[str, Any] = {"query": query} if query else {}
     client = state.client()
     if all_pages:
-        rows = [
-            Person.model_validate(i)
-            for i in paginate(
+        items = list(
+            paginate(
                 client,
                 "people",
                 scheme="scroll_id",
@@ -35,11 +42,12 @@ def list_people(
                 params=params,
                 per_page=per_page,
             )
-        ]
+        )
     else:
         params["per_page"] = per_page
         data = client.get("people", params=params)
-        rows = [Person.model_validate(i) for i in data.get("people", [])]
+        items = data.get("people", [])
+    rows = [Person.model_validate(i) for i in apply_filters(items, filter_)]
     state.emit(rows, columns=LIST_COLUMNS)
 
 
