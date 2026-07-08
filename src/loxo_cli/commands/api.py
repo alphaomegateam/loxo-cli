@@ -8,6 +8,14 @@ from loxo_cli.commands._helpers import load_data, parse_fields
 from loxo_cli.pagination import detect_scheme, extract_items, paginate
 
 
+def _per_page(scheme: str) -> int | None:
+    # Scroll endpoints (e.g. companies, deals) reject per_page with HTTP 422
+    # ("Invalid parameters: [:per_page]") and page themselves at a server-fixed
+    # size, so never send it for that scheme. Page-based endpoints accept it and
+    # benefit from a larger page; after_id ignores per_page entirely.
+    return None if scheme == "scroll_id" else 50
+
+
 def register(app: typer.Typer) -> None:
     app.command(
         "api",
@@ -25,7 +33,12 @@ def api_command(
     data: Optional[str] = typer.Option(
         None, "--data", "-d", help="JSON body: inline, @file, or - for stdin."
     ),
-    raw: bool = typer.Option(False, "--raw", help="No-op for the generic command (always raw)."),
+    raw: bool = typer.Option(
+        False,
+        "--raw",
+        help="No-op: pass the global --json flag for raw JSON. Without --json "
+        "the response renders as a table.",
+    ),
     all_pages: bool = typer.Option(False, "--all", help="Auto-paginate all pages."),
     paginate_scheme: Optional[str] = typer.Option(
         None, "--paginate", help="Force scheme: scroll_id|page|after_id."
@@ -52,16 +65,26 @@ def api_command(
                 if next_sid:
                     cont_params["scroll_id"] = next_sid
                     items = first_items + list(
-                        paginate(client, path, scheme=scheme, params=cont_params)
+                        paginate(
+                            client,
+                            path,
+                            scheme=scheme,
+                            params=cont_params,
+                            per_page=_per_page(scheme),
+                        )
                     )
                 else:
                     items = first_items
             else:
                 # For page / after_id schemes, fall back to re-paginating from
                 # the start; the first-page data is small and the scheme is rare.
-                items = list(paginate(client, path, scheme=scheme, params=params))
+                items = list(
+                    paginate(client, path, scheme=scheme, params=params, per_page=_per_page(scheme))
+                )
         else:
-            items = list(paginate(client, path, scheme=scheme, params=params))
+            items = list(
+                paginate(client, path, scheme=scheme, params=params, per_page=_per_page(scheme))
+            )
         state.emit(items)
         return
 

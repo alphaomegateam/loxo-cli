@@ -1,7 +1,20 @@
 from loxo_cli.models.base import LoxoModel, unwrap_envelope
 from loxo_cli.models.company import Company
+from loxo_cli.models.job import Job
 from loxo_cli.models.person import Person
 from loxo_cli.models.webhook import Webhook
+
+
+def test_job_status_accepts_object():
+    # Loxo returns status as a nested object, not a string (issue #6). This must
+    # validate rather than raising ValidationError.
+    j = Job.model_validate({"id": 1, "title": "VP", "status": {"id": 70251, "name": "Active"}})
+    assert j.status == {"id": 70251, "name": "Active"}
+
+
+def test_job_status_still_accepts_string():
+    j = Job.model_validate({"id": 1, "status": "Active"})
+    assert j.status == "Active"
 
 
 def test_extra_fields_preserved():

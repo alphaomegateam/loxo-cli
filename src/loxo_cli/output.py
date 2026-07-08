@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+import click
 from pydantic import BaseModel
 from rich.console import Console
 from rich.table import Table
@@ -19,26 +20,44 @@ def to_jsonable(obj: Any) -> Any:
 
 
 def apply_jq(data: Any, expr: str) -> Any:
-    """Minimal selector. Supports '.', '.a.b', '.[]', '.[].field'."""
+    """Minimal selector.
+
+    Supports '.', '.a.b', '.[]', '.[].field', and numeric list indexes
+    ('.results.0.title'). The leading '.' is optional, so bare key paths like
+    'results' or 'results.0' work the same as '.results' / '.results.0'.
+
+    Raises ``click.ClickException`` (surfaced as a clean ``Error:`` message,
+    never a raw traceback) when the expression cannot be applied.
+    """
     expr = expr.strip()
     if expr in ("", "."):
         return data
-    if not expr.startswith("."):
-        raise ValueError(f"Unsupported --jq expression: {expr!r}")
-    rest = expr[1:]
+    # Accept both jq-style leading-dot paths ('.results') and bare key paths
+    # ('results', 'results.0.title').
+    rest = expr[1:] if expr.startswith(".") else expr
     current = data
     for token in _tokenize(rest):
         if token == "[]":
             if not isinstance(current, list):
-                raise ValueError("'[]' applied to non-list")
+                raise click.ClickException(f"--jq: '[]' applied to a non-list value in {expr!r}")
             current = list(current)
         elif isinstance(current, list):
-            current = [item.get(token) if isinstance(item, dict) else None for item in current]
+            if _is_index(token):
+                idx = int(token)
+                current = current[idx] if -len(current) <= idx < len(current) else None
+            else:
+                current = [item.get(token) if isinstance(item, dict) else None for item in current]
         elif isinstance(current, dict):
             current = current.get(token)
         else:
-            raise ValueError(f"Cannot index {token!r} into {type(current).__name__}")
+            # Path continues past a scalar/None value: jq yields null here
+            # rather than erroring, which is friendlier for optional fields.
+            current = None
     return current
+
+
+def _is_index(token: str) -> bool:
+    return token.lstrip("-").isdigit()
 
 
 def _tokenize(rest: str) -> list[str]:
@@ -69,10 +88,12 @@ def render(
         payload = apply_jq(payload, jq)
 
     if as_json or jq:
-        if console.is_terminal:
-            console.print_json(json.dumps(payload))
-        else:
-            console.file.write(json.dumps(payload) + "\n")
+        # JSON is for machine consumption: always emit plain, uncolored text.
+        # We must NOT route it through the Rich colorizer, because Rich reports
+        # is_terminal=True whenever FORCE_COLOR is set (a common shell/dev-env
+        # default) even when stdout is a pipe, which wraps the JSON in ANSI
+        # escapes and breaks json.loads / --jq consumers.
+        console.file.write(json.dumps(payload, indent=2) + "\n")
         return
 
     if isinstance(payload, list) and payload and isinstance(payload[0], dict):
@@ -93,6 +114,14 @@ def render(
 def _fmt(value: Any) -> str:
     if value is None:
         return ""
-    if isinstance(value, (dict, list)):
+    if isinstance(value, dict):
+        # Loxo returns many fields (status, job_type, category, ...) as
+        # {"id": ..., "name": ...} objects. Show the human-readable name in
+        # tables instead of dumping the raw JSON object.
+        name = value.get("name")
+        if isinstance(name, (str, int, float)):
+            return str(name)
+        return json.dumps(value)
+    if isinstance(value, list):
         return json.dumps(value)
     return str(value)

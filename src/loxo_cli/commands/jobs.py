@@ -4,10 +4,18 @@ from typing import Any, Optional
 
 import typer
 
-from loxo_cli.commands._helpers import build_payload, load_data, parse_fields
+from loxo_cli.commands._helpers import (
+    QUERY_HELP,
+    apply_filters,
+    build_payload,
+    load_data,
+    parse_fields,
+)
 from loxo_cli.models.base import unwrap_envelope
 from loxo_cli.models.job import Job
 from loxo_cli.pagination import paginate
+
+FILTER_HELP = "Exact client-side match key=value on returned records (repeatable)."
 
 jobs_app = typer.Typer(help="Manage jobs. Unofficial — not affiliated with Loxo, Inc.")
 
@@ -17,24 +25,25 @@ LIST_COLUMNS = ["id", "title", "status"]
 @jobs_app.command("list")
 def list_jobs(
     ctx: typer.Context,
-    query: Optional[str] = typer.Option(None, "--query", "-q"),
+    query: Optional[str] = typer.Option(None, "--query", "-q", help=QUERY_HELP),
     all_pages: bool = typer.Option(False, "--all"),
     per_page: int = typer.Option(50, "--per-page"),
+    filter_: list[str] = typer.Option([], "--filter", help=FILTER_HELP),
 ) -> None:
     state = ctx.obj
     params: dict[str, Any] = {"query": query} if query else {}
     client = state.client()
     if all_pages:
-        rows = [
-            Job.model_validate(i)
-            for i in paginate(
+        items = list(
+            paginate(
                 client, "jobs", scheme="page", items_key="results", params=params, per_page=per_page
             )
-        ]
+        )
     else:
         params["per_page"] = per_page
         data = client.get("jobs", params=params)
-        rows = [Job.model_validate(i) for i in data.get("results", [])]
+        items = data.get("results", [])
+    rows = [Job.model_validate(i) for i in apply_filters(items, filter_)]
     state.emit(rows, columns=LIST_COLUMNS)
 
 

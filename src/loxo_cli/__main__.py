@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
@@ -51,7 +53,12 @@ class AppState:
         return build_client(self.settings(), verbose=self.verbose)
 
     def console(self) -> Console:
-        return Console(no_color=self.no_color)
+        # Disable color when the user asked (--no-color), when the NO_COLOR
+        # convention is set (https://no-color.org/), or when stdout is not a
+        # TTY (piped/redirected). The explicit isatty check is needed because
+        # Rich forces color on when FORCE_COLOR is set even into a pipe.
+        no_color = self.no_color or bool(os.environ.get("NO_COLOR")) or not sys.stdout.isatty()
+        return Console(no_color=no_color)
 
     def emit(self, data: Any, *, columns: list[str] | None = None) -> None:
         render(
@@ -80,7 +87,12 @@ def main(
     slug: Optional[str] = typer.Option(None, "--slug", help="Agency slug."),
     base_url: Optional[str] = typer.Option(None, "--base-url", help="API base URL."),
     json_out: bool = typer.Option(False, "--json", help="Force JSON output."),
-    jq: Optional[str] = typer.Option(None, "--jq", help="Filter output (dotted path)."),
+    jq: Optional[str] = typer.Option(
+        None,
+        "--jq",
+        help="Select part of the output by path, e.g. '.results' or "
+        "'.results.0.title'. The leading '.' is optional ('results' works too).",
+    ),
     quiet: bool = typer.Option(False, "--quiet", help="Suppress non-error output."),
     verbose: bool = typer.Option(False, "-v", "--verbose", help="Log requests to stderr."),
     no_color: bool = typer.Option(False, "--no-color", help="Disable color."),
