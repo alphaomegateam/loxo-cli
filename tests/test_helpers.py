@@ -65,6 +65,26 @@ def test_load_data_invalid_json_raises():
         load_data("{not json}")
 
 
+@pytest.mark.parametrize("raw", ["[1, 2]", '"just a string"', "42", "true", "null"])
+def test_load_data_non_object_raises(raw):
+    # Regression (#15): well-formed JSON that isn't an object must be rejected
+    # with a clean BadParameter, not pass through and blow up later as a TypeError.
+    with pytest.raises(typer.BadParameter):
+        load_data(raw)
+
+
+def test_load_data_non_object_from_file_raises(tmp_path):
+    p = tmp_path / "body.json"
+    p.write_text("[1, 2]")
+    with pytest.raises(typer.BadParameter):
+        load_data(f"@{p}")
+
+
+def test_load_data_non_object_from_stdin_raises():
+    with pytest.raises(typer.BadParameter):
+        load_data("-", stdin=io.StringIO("[1, 2]"))
+
+
 def test_parse_fields_simple():
     assert parse_fields(["name=Jane", "title=Eng"]) == {"name": "Jane", "title": "Eng"}
 

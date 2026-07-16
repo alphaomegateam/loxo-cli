@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.5.1]
+
+### Fixed
+
+- `LoxoSettings` no longer prints the API key in its `repr()`. The `api_key`
+  field is now `repr=False`, so an incidental `repr()` (an unhandled exception
+  with the settings object in a traceback local, a pytest assertion dump, a
+  debug print) can no longer surface the live key. (#13)
+- `loxo configure` now writes valid TOML for any value. Config serialization
+  was hand-rolled with unescaped f-strings, so an `api_key_cmd` containing
+  quotes or backslashes — or a profile name containing `.`/`]` — produced a
+  file that `tomllib` rejected on the next invocation, bricking the profile.
+  Serialization now goes through `tomli-w`. (#14)
+- `--data` now rejects well-formed JSON that isn't an object (e.g. `[1,2]`,
+  `"str"`, `42`) with a clean `--data must be a JSON object` error instead of
+  letting it through to fail later as an uncaught `TypeError`. The guard covers
+  all three input paths (inline, `@file`, and stdin). (#15)
+
 ## [0.5.0]
 
 ### Fixed

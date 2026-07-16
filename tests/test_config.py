@@ -1,7 +1,10 @@
+import tomllib
+
 import pytest
 
 from loxo_cli.config import (
     DEFAULT_BASE_URL,
+    LoxoSettings,
     list_profiles,
     load_settings,
     write_profile,
@@ -95,3 +98,39 @@ def test_api_key_cmd_failure_raises_config_error(tmp_path):
     cfg.write_text('[profile.x]\napi_key_cmd="false"\nslug="s"\n')
     with pytest.raises(ConfigError):
         load_settings(profile="x", env={}, config_path=cfg)
+
+
+def test_settings_repr_hides_api_key():
+    # Regression (#13): the api_key must not appear in repr(), which can surface
+    # in tracebacks, pytest assertion dumps, or incidental debug prints.
+    s = LoxoSettings(api_key="loxo_live_SECRET123", slug="acme", base_url="https://x")
+    r = repr(s)
+    assert "SECRET123" not in r
+    assert "loxo_live_SECRET123" not in r
+    assert "acme" in r  # non-secret fields still shown for debugging
+    assert s.api_key == "loxo_live_SECRET123"  # value itself is untouched
+
+
+def test_write_profile_roundtrips_quotes_and_backslashes(tmp_path):
+    # Regression (#14): a value with quotes/backslashes must produce valid TOML
+    # that reads back identically, not a file tomllib rejects.
+    cfg = tmp_path / "config.toml"
+    tricky = 'sh -c "echo $LOXO_KEY \\ done"'
+    write_profile("prod", api_key_cmd=tricky, slug="acme", config_path=cfg)
+    with cfg.open("rb") as fh:
+        parsed = tomllib.load(fh)  # must not raise
+    assert parsed["profile"]["prod"]["api_key_cmd"] == tricky
+    assert parsed["profile"]["prod"]["slug"] == "acme"
+
+
+def test_write_profile_roundtrips_tricky_profile_name(tmp_path):
+    # Regression (#14): a profile name with a dot must not corrupt the
+    # [profile.<name>] header.
+    cfg = tmp_path / "config.toml"
+    write_profile("us.prod", api_key="k", slug="acme", config_path=cfg)
+    with cfg.open("rb") as fh:
+        parsed = tomllib.load(fh)  # must not raise
+    assert parsed["profile"]["us.prod"]["slug"] == "acme"
+    # A round-trip through load_settings must find the same profile.
+    s = load_settings(profile="us.prod", env={}, config_path=cfg)
+    assert s.slug == "acme"

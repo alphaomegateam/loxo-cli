@@ -14,12 +14,19 @@ def load_data(raw: str | None, *, stdin: TextIO | None = None) -> dict:
     try:
         if raw == "-":
             source = stdin or sys.stdin
-            return json.load(source)
-        if raw.startswith("@"):
-            return json.loads(Path(raw[1:]).read_text())
-        return json.loads(raw)
+            parsed = json.load(source)
+        elif raw.startswith("@"):
+            parsed = json.loads(Path(raw[1:]).read_text())
+        else:
+            parsed = json.loads(raw)
     except (json.JSONDecodeError, OSError) as exc:
         raise typer.BadParameter(f"Invalid --data JSON: {exc}") from exc
+    # Guard shape here, at the single choke point, so all three input paths
+    # (inline, @file, stdin) reject well-formed-but-wrong JSON with a clean
+    # error instead of a downstream TypeError in build_payload.
+    if not isinstance(parsed, dict):
+        raise typer.BadParameter(f"--data must be a JSON object, got {type(parsed).__name__}")
+    return parsed
 
 
 def parse_fields(fields: list[str]) -> dict[str, Any]:

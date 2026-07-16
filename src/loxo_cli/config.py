@@ -4,9 +4,11 @@ import os
 import shlex
 import subprocess
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping
+
+import tomli_w
 
 from loxo_cli.errors import ConfigError
 
@@ -15,7 +17,10 @@ DEFAULT_BASE_URL = "https://app.loxo.co/api"
 
 @dataclass(frozen=True)
 class LoxoSettings:
-    api_key: str
+    # api_key is repr=False so an incidental repr() (traceback local, pytest
+    # assertion dump, debug print) never surfaces the live key. It carries no
+    # default, so it stays a required positional field and ordering is unaffected.
+    api_key: str = field(repr=False)
     slug: str
     base_url: str
 
@@ -102,16 +107,17 @@ def list_profiles(*, config_path: Path | None = None) -> dict[str, dict]:
 
 
 def _dump_toml(config: dict[str, Any]) -> str:
-    lines: list[str] = []
+    # Delegate to tomli_w rather than hand-rolling: values like api_key_cmd are
+    # arbitrary shell commands (quotes, backslashes) and profile names can contain
+    # '.'/']'; correct escaping and key-quoting are subtle enough to be library work.
+    # Order the top-level table so default_profile precedes the [profile.*] tables
+    # (tomli_w emits scalars before sub-tables, but be explicit).
+    ordered: dict[str, Any] = {}
     if config.get("default_profile"):
-        lines.append(f'default_profile = "{config["default_profile"]}"')
-        lines.append("")
-    for name, data in config.get("profile", {}).items():
-        lines.append(f"[profile.{name}]")
-        for key, value in data.items():
-            lines.append(f'{key} = "{value}"')
-        lines.append("")
-    return "\n".join(lines).rstrip() + "\n"
+        ordered["default_profile"] = config["default_profile"]
+    if config.get("profile"):
+        ordered["profile"] = config["profile"]
+    return tomli_w.dumps(ordered)
 
 
 def write_profile(
