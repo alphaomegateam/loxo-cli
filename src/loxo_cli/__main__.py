@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from dataclasses import dataclass, field
@@ -76,6 +77,36 @@ class AppState:
         )
 
 
+class _CliLogHandler(logging.StreamHandler):  # type: ignore[type-arg]
+    """Marker subclass so repeated invocations replace their own handler."""
+
+
+def _configure_logging(*, verbose: bool, quiet: bool) -> None:
+    """Attach the CLI's stderr handler to the package logger.
+
+    The library itself only logs; this is what makes a terminal user see
+    anything. stderr, never stdout, so `--json` output stays parseable.
+
+    --verbose lowers the threshold to DEBUG (the per-request lines);
+    the default is WARNING (the long-retry notice); --quiet raises it to
+    ERROR, and wins over --verbose, since asking for quiet after asking
+    for verbose is the more specific request.
+    """
+    package_logger = logging.getLogger("loxo_cli")
+    for existing in list(package_logger.handlers):
+        if isinstance(existing, _CliLogHandler):
+            package_logger.removeHandler(existing)
+    # Built fresh per invocation: StreamHandler binds the stream at
+    # construction, and sys.stderr is not stable across a test runner's
+    # captures.
+    handler = _CliLogHandler(sys.stderr)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    level = logging.ERROR if quiet else (logging.DEBUG if verbose else logging.WARNING)
+    handler.setLevel(level)
+    package_logger.setLevel(level)
+    package_logger.addHandler(handler)
+
+
 def _version_callback(value: bool) -> None:
     if value:
         typer.echo(__version__)
@@ -99,7 +130,12 @@ def main(
         help="Select part of the output by path, e.g. '.results' or "
         "'.results.0.title'. The leading '.' is optional ('results' works too).",
     ),
-    quiet: bool = typer.Option(False, "--quiet", help="Suppress non-error output."),
+    quiet: bool = typer.Option(
+        False,
+        "--quiet",
+        help="Suppress non-error diagnostics on stderr, including retry notices. "
+        "Command results on stdout are unaffected.",
+    ),
     verbose: bool = typer.Option(False, "-v", "--verbose", help="Log requests to stderr."),
     no_color: bool = typer.Option(False, "--no-color", help="Disable color."),
     retries: Optional[int] = typer.Option(
@@ -110,6 +146,7 @@ def main(
     ),
 ) -> None:
     """loxo CLI. Unofficial — not affiliated with Loxo, Inc."""
+    _configure_logging(verbose=verbose, quiet=quiet)
     ctx.obj = AppState(
         profile=profile,
         api_key=api_key,

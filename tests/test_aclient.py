@@ -1,5 +1,7 @@
 """Async client tests — the mirror of test_client.py."""
 
+import logging
+
 import httpx
 import pytest
 import respx
@@ -136,19 +138,21 @@ async def test_exhausted_retries_chain_the_originating_httpx_error():
 
 
 @respx.mock
-async def test_long_retry_is_announced_on_stderr_without_verbose(capsys):
+async def test_long_retry_is_announced_without_verbose(caplog, capsys):
     respx.get("https://app.loxo.co/api/acme/people").mock(
         side_effect=[
             httpx.Response(429, headers={"Retry-After": "5"}),
             httpx.Response(200, json={"people": []}),
         ]
     )
-    async with AsyncLoxoClient(SETTINGS) as client:
-        assert await client.get("people") == {"people": []}
+    with caplog.at_level(logging.DEBUG, logger="loxo_cli"):
+        async with AsyncLoxoClient(SETTINGS) as client:
+            assert await client.get("people") == {"people": []}
+    assert "retrying in 5.0s" in caplog.text
+    assert "testkey" not in caplog.text
     captured = capsys.readouterr()
-    assert "retrying in 5.0s" in captured.err
-    assert "testkey" not in captured.err
     assert captured.out == ""
+    assert captured.err == ""  # a library never prints; it logs
 
 
 @respx.mock

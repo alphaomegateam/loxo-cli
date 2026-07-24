@@ -1,3 +1,5 @@
+import logging
+
 import httpx
 import pytest
 import respx
@@ -201,32 +203,35 @@ def test_exhausted_retries_chain_the_originating_httpx_error():
 
 
 @respx.mock
-def test_long_retry_is_announced_on_stderr_without_verbose(capsys):
+def test_long_retry_is_announced_without_verbose(caplog, capsys):
+    # 0.6.1: the notice is a log record rather than a print. The CLI turns it
+    # back into a stderr line (tests/test_logging.py pins that end to end).
     respx.get("https://app.loxo.co/api/acme/people").mock(
         side_effect=[
             httpx.Response(429, headers={"Retry-After": "5"}, text="slow down"),
             httpx.Response(200, json={"people": []}),
         ]
     )
-    with LoxoClient(SETTINGS) as client:
-        assert client.get("people") == {"people": []}
-    captured = capsys.readouterr()
-    assert "retrying in 5.0s" in captured.err
-    assert "testkey" not in captured.err
-    assert captured.out == ""  # stdout stays clean for --json
+    with caplog.at_level(logging.DEBUG, logger="loxo_cli"):
+        with LoxoClient(SETTINGS) as client:
+            assert client.get("people") == {"people": []}
+    assert "retrying in 5.0s" in caplog.text
+    assert "testkey" not in caplog.text
+    assert capsys.readouterr().out == ""  # stdout stays clean for --json
 
 
 @respx.mock
-def test_short_retry_stays_quiet_without_verbose(capsys):
+def test_short_retry_stays_quiet_without_verbose(caplog):
     respx.get("https://app.loxo.co/api/acme/people").mock(
         side_effect=[
             httpx.Response(429, headers={"Retry-After": "0"}),
             httpx.Response(200, json={}),
         ]
     )
-    with LoxoClient(SETTINGS) as client:
-        client.get("people")
-    assert capsys.readouterr().err == ""
+    with caplog.at_level(logging.DEBUG, logger="loxo_cli"):
+        with LoxoClient(SETTINGS) as client:
+            client.get("people")
+    assert caplog.text == ""
 
 
 @respx.mock
@@ -241,28 +246,28 @@ def test_retries_can_be_disabled():
 
 
 @respx.mock
-def test_verbose_logs_each_retry_without_leaking_the_key(capsys):
+def test_verbose_logs_each_retry_without_leaking_the_key(caplog):
     respx.get("https://app.loxo.co/api/acme/people").mock(
         side_effect=[httpx.Response(429), httpx.Response(200, json={})]
     )
-    with LoxoClient(SETTINGS, verbose=True) as client:
-        client.get("people")
-    err = capsys.readouterr().err
-    assert "retry 1" in err
-    assert "testkey" not in err
-    assert "Authorization" not in err
+    with caplog.at_level(logging.DEBUG, logger="loxo_cli"):
+        with LoxoClient(SETTINGS, verbose=True) as client:
+            client.get("people")
+    assert "retry 1" in caplog.text
+    assert "testkey" not in caplog.text
+    assert "Authorization" not in caplog.text
 
 
 @respx.mock
-def test_verbose_does_not_double_print_the_long_wait_notice(capsys):
+def test_verbose_does_not_double_report_the_long_wait_notice(caplog):
     respx.get("https://app.loxo.co/api/acme/people").mock(
         side_effect=[
             httpx.Response(429, headers={"Retry-After": "5"}),
             httpx.Response(200, json={}),
         ]
     )
-    with LoxoClient(SETTINGS, verbose=True) as client:
-        client.get("people")
-    err = capsys.readouterr().err
-    assert "retry 1 in 5.0s" in err
-    assert "Request failed" not in err
+    with caplog.at_level(logging.DEBUG, logger="loxo_cli"):
+        with LoxoClient(SETTINGS, verbose=True) as client:
+            client.get("people")
+    assert "retry 1 in 5.0s" in caplog.text
+    assert "Request failed" not in caplog.text
