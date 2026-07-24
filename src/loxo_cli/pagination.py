@@ -67,7 +67,26 @@ class _ScrollPaginator:
         if not items:
             self._done = True
             return [], True
-        self._scroll_id = data.get("scroll_id") if isinstance(data, dict) else None
+        next_scroll_id = data.get("scroll_id") if isinstance(data, dict) else None
+        # If the endpoint handed back the same scroll_id we just sent, it
+        # ignored the cursor. Stop WITHOUT re-yielding the duplicate page,
+        # exactly as the after_id guard does; otherwise this loops forever.
+        # Only applies once a cursor has actually been sent: on the first
+        # request self._scroll_id is None and nothing can repeat.
+        #
+        # Safe because Loxo's scroll_id is a *position* cursor, not a
+        # session handle. (Some scroll APIs, e.g. Elasticsearch, reuse one
+        # constant scroll_id for a whole sweep; there this guard would
+        # truncate every sweep to one page.) Verified against the live
+        # agency on 2026-07-24: two consecutive GET /companies calls
+        # returned different scroll_ids and disjoint items, and the value is
+        # hex-encoded ASCII — 5B313738343931383338303132302C333134353431
+        # 3437375D decodes to "[1784918380120,314541477]", i.e.
+        # [timestamp, last_item_id]. A repeat can only mean it was ignored.
+        if self._scroll_id is not None and next_scroll_id == self._scroll_id:
+            self._done = True
+            return [], True
+        self._scroll_id = next_scroll_id
         if not self._scroll_id:
             self._done = True
         return items, self._done
@@ -105,7 +124,11 @@ class _PagePaginator:
         # missing per_page can't raise TypeError.
         if total is not None and size is not None and current * size >= total:
             self._done = True
-        self._page = current + 1
+        # Follow the server's own numbering, but never stand still or move
+        # backwards: a server that reports the same current_page on every
+        # response, with a non-empty page and no usable total_count, would
+        # otherwise make this refetch one page forever.
+        self._page = max(current + 1, self._page + 1)
         return items, self._done
 
 
