@@ -14,6 +14,7 @@ from loxo_cli.client import LoxoClient, build_client
 from loxo_cli.commands._app import LoxoGroup
 from loxo_cli.config import LoxoSettings, load_settings
 from loxo_cli.output import render
+from loxo_cli.retry import RetryPolicy, resolve_max_retries
 
 HELP_EPILOG = "Unofficial — not affiliated with Loxo, Inc."
 
@@ -35,6 +36,7 @@ class AppState:
     jq: Optional[str]
     verbose: bool
     no_color: bool
+    retries: Optional[int] = None
     config_path: Optional[Path] = None
     _settings: Optional[LoxoSettings] = field(default=None, repr=False)
 
@@ -50,7 +52,8 @@ class AppState:
         return self._settings
 
     def client(self) -> LoxoClient:
-        return build_client(self.settings(), verbose=self.verbose)
+        policy = RetryPolicy(max_retries=resolve_max_retries(self.retries))
+        return build_client(self.settings(), verbose=self.verbose, retry=policy)
 
     def console(self) -> Console:
         # Disable color when the user asked (--no-color), when the NO_COLOR
@@ -96,6 +99,12 @@ def main(
     quiet: bool = typer.Option(False, "--quiet", help="Suppress non-error output."),
     verbose: bool = typer.Option(False, "-v", "--verbose", help="Log requests to stderr."),
     no_color: bool = typer.Option(False, "--no-color", help="Disable color."),
+    retries: Optional[int] = typer.Option(
+        None,
+        "--retries",
+        help="Retries for throttled or failed requests (0 disables). "
+        "Overrides LOXO_MAX_RETRIES.",
+    ),
 ) -> None:
     """loxo CLI. Unofficial — not affiliated with Loxo, Inc."""
     ctx.obj = AppState(
@@ -107,6 +116,7 @@ def main(
         jq=jq,
         verbose=verbose,
         no_color=no_color,
+        retries=retries,
     )
 
 

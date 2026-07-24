@@ -45,3 +45,58 @@ def test_callback_registers_global_options():
     assert "--profile" in out
     assert "--json" in out
     assert "--jq" in out
+
+
+from loxo_cli.__main__ import AppState  # noqa: E402
+from loxo_cli.retry import RetryPolicy  # noqa: E402
+
+
+def _retry_state(**kw):
+    base = dict(
+        profile=None,
+        api_key="k",
+        slug="acme",
+        base_url="https://app.loxo.co/api",
+        json_out=False,
+        jq=None,
+        verbose=False,
+        no_color=False,
+    )
+    base.update(kw)
+    return AppState(**base)
+
+
+def test_client_uses_the_default_policy_when_no_flag_or_env(monkeypatch):
+    monkeypatch.delenv("LOXO_MAX_RETRIES", raising=False)
+    client = _retry_state().client()
+    try:
+        assert client._retry.max_retries == RetryPolicy().max_retries
+    finally:
+        client.close()
+
+
+def test_retries_flag_overrides_the_default(monkeypatch):
+    monkeypatch.delenv("LOXO_MAX_RETRIES", raising=False)
+    client = _retry_state(retries=0).client()
+    try:
+        assert client._retry.max_retries == 0
+    finally:
+        client.close()
+
+
+def test_env_var_is_honored_when_no_flag(monkeypatch):
+    monkeypatch.setenv("LOXO_MAX_RETRIES", "7")
+    client = _retry_state().client()
+    try:
+        assert client._retry.max_retries == 7
+    finally:
+        client.close()
+
+
+def test_flag_beats_env(monkeypatch):
+    monkeypatch.setenv("LOXO_MAX_RETRIES", "7")
+    client = _retry_state(retries=1).client()
+    try:
+        assert client._retry.max_retries == 1
+    finally:
+        client.close()
