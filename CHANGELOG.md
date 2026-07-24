@@ -1,5 +1,49 @@
 # Changelog
 
+## [0.6.0]
+
+### Added
+
+- `AsyncLoxoClient`, an async twin of `LoxoClient` over `httpx.AsyncClient`,
+  plus `build_async_client()`. Mirrors the sync client method-for-method
+  (`request`/`get`/`post`/`put`/`delete` are coroutines, `close()` becomes
+  `aclose()`). Safe for concurrent use from many tasks; long-lived services
+  should build one at startup and `aclose()` it at shutdown so the connection
+  pool is reused.
+- `apaginate()`, the async counterpart of `paginate()`. Both now drive the same
+  per-scheme state machines, so the `after_id` non-advancing-cursor guard and
+  the missing-`total_count` guard behave identically in sync and async.
+- Automatic retry with exponential backoff and jitter, honoring `Retry-After`
+  (both integer-seconds and HTTP-date forms). Retries are **on by default**.
+- `--retries N` and `LOXO_MAX_RETRIES` to control or disable retrying.
+- `LoxoError.is_rate_limited`, `.retry_after`, and `.attempts`.
+
+### Changed
+
+- **Behavior change for scripts.** A throttled or failing request that
+  previously returned immediately is now retried up to 3 times before
+  surfacing the same error and the same exit code. A sustained 429 that used
+  to exit 5 within a second can now take much longer: a 60-second wall-clock
+  budget caps how much accumulated backoff a request may still sleep through,
+  but that budget only gates the *next* sleep — the attempt already in flight
+  when it's hit still gets its own request timeout, so the worst case is
+  nearer ~90 seconds. Under a sustained `Retry-After: 30`, only 2 of the 3
+  configured retries actually run before the budget cuts off the third. Pass
+  `--retries 0` or set `LOXO_MAX_RETRIES=0` to restore the old fail-fast
+  behavior.
+- Retries are method-aware. `GET`/`HEAD`/`PUT`/`DELETE`/`OPTIONS` retry on 429,
+  5xx, timeouts, and connection failures. `POST` retries only when the request
+  provably did not take effect — a 429, or a connection that was never
+  established — so a timed-out write is never replayed into a duplicate record.
+  Note that a `DELETE` whose first attempt times out after committing will
+  return 404 on retry and surface as exit 4, for an operation that succeeded.
+
+### Fixed
+
+- The `page` scheme no longer raises `TypeError` when a response reports
+  `total_count` without a `per_page` and the caller passed `per_page=None`. It
+  now falls through to the empty-page stop instead.
+
 ## [0.5.1]
 
 ### Fixed

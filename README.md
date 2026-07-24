@@ -127,6 +127,39 @@ Loxo paginates differently per endpoint: cursor (`scroll_id`), offset (`page`), 
 default; pass `--all` to transparently walk every page. The generic `loxo api ... --all`
 auto-detects the scheme (or force it with `--paginate scroll_id|page|after_id`).
 
+## Async
+
+```python
+from loxo_cli.client import AsyncLoxoClient
+from loxo_cli.config import load_settings
+from loxo_cli.pagination import apaginate
+
+settings = load_settings()
+
+# Scripts: one-shot, closes the pool on exit.
+async with AsyncLoxoClient(settings) as client:
+    job = await client.get("jobs/123")
+
+# Long-lived services (FastAPI lifespan, worker process): build ONE client
+# at startup and aclose() it at shutdown, so the connection pool is reused.
+# AsyncLoxoClient is safe to share across concurrent tasks.
+async for candidate in apaginate(
+    client, "jobs/123/job_candidates", scheme="page", items_key="job_candidates"
+):
+    ...
+```
+
+Retries are on by default. Pass a policy to tune or disable them — a service
+answering an HTTP request should be far less patient than a CLI:
+
+```python
+from loxo_cli.retry import RetryPolicy
+
+client = AsyncLoxoClient(
+    settings, retry=RetryPolicy(max_retries=1, max_delay=2.0, max_elapsed=5.0)
+)
+```
+
 ## Contributing
 
 ```bash
