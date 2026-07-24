@@ -34,3 +34,28 @@ def test_config_error_exit_code():
 
 def test_unknown_exception_exit_code():
     assert exit_code_for(ValueError("nope")) == 1
+
+
+def test_is_rate_limited():
+    assert LoxoError("throttled", status_code=429).is_rate_limited
+    assert not LoxoError("nope", status_code=404).is_rate_limited
+    assert not LoxoError("network", status_code=None).is_rate_limited
+
+
+def test_attempts_defaults_to_one_and_is_writable():
+    err = LoxoError("boom", status_code=500)
+    assert err.attempts == 1
+    err.attempts = 4
+    assert err.attempts == 4
+
+
+def test_retry_after_defaults_to_none_and_round_trips():
+    assert LoxoError("boom", status_code=429).retry_after is None
+    assert LoxoError("boom", status_code=429, retry_after=2.5).retry_after == 2.5
+
+
+def test_exit_code_mapping_is_unchanged_by_the_new_fields():
+    assert LoxoError("t", status_code=429, retry_after=1.0).exit_code == 5
+    assert LoxoError("t", status_code=404).exit_code == 4
+    assert LoxoError("t", status_code=500).exit_code == 6
+    assert LoxoError("t", status_code=None, is_timeout=True).exit_code == 7
