@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import sys
 import time
 from typing import Any, Mapping
@@ -176,3 +177,99 @@ def build_client(
     retry: RetryPolicy | None = None,
 ) -> LoxoClient:
     return LoxoClient(settings, verbose=verbose, retry=retry)
+
+
+class AsyncLoxoClient(_BaseClient):
+    """Async twin of LoxoClient.
+
+    Safe for concurrent use from many tasks. Long-lived services should
+    build ONE of these at startup and aclose() it at shutdown so the
+    connection pool is reused; the `async with` form is for scripts.
+    """
+
+    def __init__(
+        self,
+        settings: LoxoSettings,
+        *,
+        verbose: bool = False,
+        retry: RetryPolicy | None = None,
+    ) -> None:
+        super().__init__(settings, verbose=verbose, retry=retry)
+        self._http = httpx.AsyncClient(
+            headers=self._auth_headers(),
+            follow_redirects=True,
+            timeout=TIMEOUT,
+        )
+
+    async def __aenter__(self) -> "AsyncLoxoClient":
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        await self.aclose()
+
+    async def aclose(self) -> None:
+        await self._http.aclose()
+
+    async def request(
+        self,
+        method: str,
+        endpoint: str,
+        *,
+        params: Mapping[str, Any] | None = None,
+        json: Any | None = None,
+    ) -> Any:
+        target = self._target(endpoint)
+        headers = self._headers(json)
+        started = time.monotonic()
+        attempt = 0
+        while True:
+            attempt += 1
+            self._log(method, target)
+            try:
+                response = await self._http.request(
+                    method, target, params=params, json=json, headers=headers
+                )
+                response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                error = self._map_status_error(exc, method, endpoint)
+                outcome = classify_response(exc.response.status_code)
+            except httpx.HTTPError as exc:
+                error = self._map_exception(exc, method, endpoint)
+                outcome = classify_exception(exc)
+            else:
+                return self._decode(response)
+
+            error.attempts = attempt
+            delay = next_delay(
+                attempt=attempt,
+                method=method,
+                outcome=outcome,
+                policy=self._retry,
+                elapsed=time.monotonic() - started,
+                retry_after=error.retry_after,
+            )
+            if delay is None:
+                raise error
+            self._log_retry(method, target, attempt, delay)
+            await asyncio.sleep(delay)
+
+    async def get(self, endpoint: str, **kw: Any) -> Any:
+        return await self.request("GET", endpoint, **kw)
+
+    async def post(self, endpoint: str, **kw: Any) -> Any:
+        return await self.request("POST", endpoint, **kw)
+
+    async def put(self, endpoint: str, **kw: Any) -> Any:
+        return await self.request("PUT", endpoint, **kw)
+
+    async def delete(self, endpoint: str, **kw: Any) -> Any:
+        return await self.request("DELETE", endpoint, **kw)
+
+
+def build_async_client(
+    settings: LoxoSettings,
+    *,
+    verbose: bool = False,
+    retry: RetryPolicy | None = None,
+) -> AsyncLoxoClient:
+    return AsyncLoxoClient(settings, verbose=verbose, retry=retry)
