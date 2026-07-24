@@ -29,7 +29,10 @@ app = typer.Typer(
 @dataclass
 class AppState:
     profile: Optional[str]
-    api_key: Optional[str]
+    # repr=False for the same reason as LoxoSettings.api_key: AppState is
+    # ctx.obj, so any traceback through Click's invocation path or a pytest
+    # assertion dump would otherwise repr a live key.
+    api_key: Optional[str] = field(repr=False)
     slug: Optional[str]
     base_url: Optional[str]
     json_out: bool
@@ -102,7 +105,7 @@ def main(
     retries: Optional[int] = typer.Option(
         None,
         "--retries",
-        help="Retries for throttled or failed requests (0 disables). "
+        help="Retries for throttled or failed requests (default 3; 0 disables). "
         "Overrides LOXO_MAX_RETRIES.",
     ),
 ) -> None:

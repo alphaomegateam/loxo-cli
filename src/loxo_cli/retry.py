@@ -56,7 +56,14 @@ def classify_response(status_code: int) -> Outcome:
     return "fatal"
 
 
-def classify_exception(exc: httpx.HTTPError) -> Outcome:
+def classify_exception(exc: httpx.TransportError) -> Outcome:
+    """Classify a transport-level failure.
+
+    Deliberately narrower than httpx.HTTPError: an HTTPStatusError carries a
+    response and belongs in classify_response, and the non-transport
+    RequestError subclasses (TooManyRedirects, DecodingError) are not
+    meaningfully retryable. The client routes each of those elsewhere.
+    """
     # ConnectTimeout subclasses TimeoutException, so it must be checked
     # first: it means the connection was never established, which is a
     # stronger (and safer) statement than a generic timeout.

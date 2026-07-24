@@ -10,6 +10,7 @@ import httpx
 from loxo_cli.config import LoxoSettings
 from loxo_cli.errors import LoxoError
 from loxo_cli.retry import (
+    Outcome,
     RetryPolicy,
     classify_exception,
     classify_response,
@@ -18,6 +19,11 @@ from loxo_cli.retry import (
 )
 
 TIMEOUT = 30.0
+
+# A retry wait at or above this many seconds is announced on stderr even
+# without --verbose. Below it the pause is short enough that silence reads
+# as normal latency; above it the terminal would otherwise look frozen.
+NOTICE_THRESHOLD = 1.0
 
 
 def url_for(settings: LoxoSettings, endpoint: str) -> str:
@@ -61,11 +67,54 @@ class _BaseClient:
             print(f"{method.upper()} {target}", file=sys.stderr)
 
     def _log_retry(self, method: str, target: str, attempt: int, delay: float) -> None:
+        # Method + URL only, and only under --verbose. Otherwise a long wait
+        # still gets a one-line notice, so a throttled CLI run doesn't look
+        # frozen; both go to stderr so --json output on stdout stays clean.
         if self._verbose:
             print(
                 f"{method.upper()} {target} -> retry {attempt} in {delay:.1f}s",
                 file=sys.stderr,
             )
+        elif delay >= NOTICE_THRESHOLD:
+            print(
+                f"Request failed; retrying in {delay:.1f}s (attempt {attempt})...",
+                file=sys.stderr,
+            )
+
+    def _delay_or_raise(
+        self,
+        *,
+        error: LoxoError,
+        cause: BaseException,
+        outcome: Outcome,
+        method: str,
+        target: str,
+        attempt: int,
+        started: float,
+    ) -> float:
+        """Decide whether to retry: return the delay, or raise the error.
+
+        Shared by both request loops — the decision contains no I/O, so the
+        sync and async loops differ only in the HTTP call and the sleep.
+        `cause` is the httpx exception this attempt failed with; raising
+        `from` it keeps the transport traceback attached to LoxoError.
+        """
+        error.attempts = attempt
+        delay = next_delay(
+            attempt=attempt,
+            method=method,
+            outcome=outcome,
+            policy=self._retry,
+            elapsed=time.monotonic() - started,
+            retry_after=error.retry_after,
+        )
+        # `is None` deliberately, not truthiness: next_delay legitimately
+        # returns 0.0 when the server sends `Retry-After: 0`, and treating
+        # that as "give up" would skip a retry the server asked for.
+        if delay is None:
+            raise error from cause
+        self._log_retry(method, target, attempt, delay)
+        return delay
 
     def _map_status_error(
         self, exc: httpx.HTTPStatusError, method: str, endpoint: str
@@ -137,24 +186,29 @@ class LoxoClient(_BaseClient):
             except httpx.HTTPStatusError as exc:
                 error = self._map_status_error(exc, method, endpoint)
                 outcome = classify_response(exc.response.status_code)
-            except httpx.HTTPError as exc:
+                cause: httpx.HTTPError = exc
+            except httpx.TransportError as exc:
                 error = self._map_exception(exc, method, endpoint)
                 outcome = classify_exception(exc)
+                cause = exc
+            except httpx.HTTPError as exc:
+                # TooManyRedirects / DecodingError: request-level failures that
+                # are not transport problems and gain nothing from a replay.
+                error = self._map_exception(exc, method, endpoint)
+                outcome = "fatal"
+                cause = exc
             else:
                 return self._decode(response)
 
-            error.attempts = attempt
-            delay = next_delay(
-                attempt=attempt,
-                method=method,
+            delay = self._delay_or_raise(
+                error=error,
+                cause=cause,
                 outcome=outcome,
-                policy=self._retry,
-                elapsed=time.monotonic() - started,
-                retry_after=error.retry_after,
+                method=method,
+                target=target,
+                attempt=attempt,
+                started=started,
             )
-            if delay is None:
-                raise error
-            self._log_retry(method, target, attempt, delay)
             time.sleep(delay)
 
     def get(self, endpoint: str, **kw: Any) -> Any:
@@ -233,24 +287,29 @@ class AsyncLoxoClient(_BaseClient):
             except httpx.HTTPStatusError as exc:
                 error = self._map_status_error(exc, method, endpoint)
                 outcome = classify_response(exc.response.status_code)
-            except httpx.HTTPError as exc:
+                cause: httpx.HTTPError = exc
+            except httpx.TransportError as exc:
                 error = self._map_exception(exc, method, endpoint)
                 outcome = classify_exception(exc)
+                cause = exc
+            except httpx.HTTPError as exc:
+                # TooManyRedirects / DecodingError: request-level failures that
+                # are not transport problems and gain nothing from a replay.
+                error = self._map_exception(exc, method, endpoint)
+                outcome = "fatal"
+                cause = exc
             else:
                 return self._decode(response)
 
-            error.attempts = attempt
-            delay = next_delay(
-                attempt=attempt,
-                method=method,
+            delay = self._delay_or_raise(
+                error=error,
+                cause=cause,
                 outcome=outcome,
-                policy=self._retry,
-                elapsed=time.monotonic() - started,
-                retry_after=error.retry_after,
+                method=method,
+                target=target,
+                attempt=attempt,
+                started=started,
             )
-            if delay is None:
-                raise error
-            self._log_retry(method, target, attempt, delay)
             await asyncio.sleep(delay)
 
     async def get(self, endpoint: str, **kw: Any) -> Any:
