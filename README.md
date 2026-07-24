@@ -144,6 +144,12 @@ application asks for output:
 
 Headers are never logged, so the API key cannot reach a log record.
 
+**Watch the interaction between the two.** A client built with `verbose=True` reports each
+retry with the detailed `DEBUG` line *instead of* the `WARNING` notice — they never
+double-report the same retry. So a library consumer who sets `verbose=True` but configures
+logging only at `WARNING` sees **nothing** for retries. Either leave `verbose=False` and
+watch at `WARNING`, or set `verbose=True` and drop the level to `DEBUG`.
+
 ```python
 import logging
 

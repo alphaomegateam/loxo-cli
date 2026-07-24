@@ -288,3 +288,19 @@ def test_non_transport_request_errors_are_fatal_and_not_retried(exc_type):
     assert ei.value.attempts == 1
     assert ei.value.status_code is None
     assert isinstance(ei.value.__cause__, exc_type)
+
+
+@respx.mock
+def test_non_json_body_reports_the_real_attempt_count():
+    # The decode failure happens after the retry loop succeeded, so the error
+    # must still say how many HTTP calls it took to get here.
+    respx.get("https://app.loxo.co/api/acme/people").mock(
+        side_effect=[
+            httpx.Response(500, text="boom"),
+            httpx.Response(200, text="<html>not json</html>"),
+        ]
+    )
+    with LoxoClient(SETTINGS) as client:
+        with pytest.raises(LoxoError) as ei:
+            client.get("people")
+    assert ei.value.attempts == 2

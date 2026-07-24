@@ -133,7 +133,7 @@ class _BaseClient:
             )
         return LoxoError(f"Loxo {method} {endpoint} request failed: {exc}", status_code=None)
 
-    def _decode(self, response: httpx.Response) -> Any:
+    def _decode(self, response: httpx.Response, attempt: int = 1) -> Any:
         if not response.content:
             return None
         try:
@@ -143,11 +143,16 @@ class _BaseClient:
             # non-JSON body (a proxy's HTML error page, a truncated
             # response) must still surface as a LoxoError: every failure out
             # of this client carries a status_code and an attempt count.
-            raise LoxoError(
+            # `attempt` is passed in because this runs after the retry loop
+            # succeeded, outside the bookkeeping in _delay_or_raise — without
+            # it a body that failed to decode on attempt 3 would report 1.
+            error = LoxoError(
                 f"Loxo returned {response.status_code} with a non-JSON body: "
                 f"{response.text[:500]}",
                 status_code=response.status_code,
-            ) from exc
+            )
+            error.attempts = attempt
+            raise error from exc
 
 
 class LoxoClient(_BaseClient):
@@ -209,7 +214,7 @@ class LoxoClient(_BaseClient):
                 outcome = "fatal"
                 cause = exc
             else:
-                return self._decode(response)
+                return self._decode(response, attempt)
 
             delay = self._delay_or_raise(
                 error=error,
@@ -310,7 +315,7 @@ class AsyncLoxoClient(_BaseClient):
                 outcome = "fatal"
                 cause = exc
             else:
-                return self._decode(response)
+                return self._decode(response, attempt)
 
             delay = self._delay_or_raise(
                 error=error,

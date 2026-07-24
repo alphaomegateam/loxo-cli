@@ -4,12 +4,13 @@
 
 ### Fixed
 
-- **Two pagination loops that could never terminate.** The `scroll_id` and
-  `page` schemes had no equivalent of the `after_id` non-advancing-cursor
-  guard, so an endpoint that ignored its cursor was refetched forever,
-  hammering the API until it throttled the caller. Both bugs predate 0.6.0 —
-  they were present in 0.5.1's `paginate()` — and 0.6.0's shared state
-  machines meant `apaginate()` inherited them.
+- **Two pagination loops that could never terminate**, each for its own
+  reason: `scroll_id` had no equivalent of the `after_id` non-advancing-cursor
+  guard, and `page` derived its next page number from the server's
+  `current_page` without requiring it to move. In both cases the same page was
+  refetched forever, hammering the API until it throttled the caller. Both bugs
+  predate 0.6.0 — they were present in 0.5.1's `paginate()` — and 0.6.0's
+  shared state machines meant `apaginate()` inherited them.
   - `scroll_id`: a non-empty page carrying back the same `scroll_id` that was
     just sent now stops the sweep without re-yielding that page. Loxo's
     `scroll_id` is a position cursor (hex-encoded `[timestamp, last_item_id]`),
@@ -18,7 +19,11 @@
   - `page`: the next page number now strictly increases, so a server that
     reports the same `current_page` on every response — with a non-empty page
     and no usable `total_count` — advances instead of standing still. A server
-    that reports a *higher* `current_page` is still followed, as before.
+    that reports a *higher* `current_page` is still followed, as before. Note
+    the narrower scope than the cursor guards: this fixes a server that
+    *honors* `page` while misreporting `current_page`. An endpoint that ignores
+    `page` outright is still not detected, because unlike a cursor scheme there
+    is nothing in the response to compare against.
 - A `2xx` response carrying a non-JSON body (an HTML error page injected by a
   proxy, a truncated response) raised a bare `json.JSONDecodeError` with no
   status code and no attempt count. It now raises `LoxoError` with the
@@ -47,9 +52,11 @@
   to nothing; it raises the CLI's log threshold to errors only, suppressing
   retry notices and, if also passed, `--verbose` request lines. Command results
   on stdout are unaffected.
-- Test coverage for the `fatal` classification of `httpx.TooManyRedirects` and
-  `httpx.DecodingError` (#18): both are pinned as single-attempt, never
-  retried, in the sync and async clients.
+- Test coverage for the client's `except httpx.HTTPError` branch (#18), which
+  is where `httpx.TooManyRedirects` and `httpx.DecodingError` are marked fatal
+  — neither is a `TransportError`, so `classify_exception()` never sees them.
+  Both are now pinned as single-attempt, never retried, in the sync and async
+  clients.
 
 ## [0.6.0]
 
