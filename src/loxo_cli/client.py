@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-import sys
+import logging
 import time
 from typing import Any, Mapping
 
@@ -20,10 +20,15 @@ from loxo_cli.retry import (
 
 TIMEOUT = 30.0
 
-# A retry wait at or above this many seconds is announced on stderr even
+# A retry wait at or above this many seconds is announced at WARNING even
 # without --verbose. Below it the pause is short enough that silence reads
 # as normal latency; above it the terminal would otherwise look frozen.
 NOTICE_THRESHOLD = 1.0
+
+# Silent for library consumers: the package attaches a NullHandler in
+# __init__, and the CLI attaches a stderr handler in __main__. Never log
+# headers — that would leak the bearer token.
+logger = logging.getLogger(__name__)
 
 
 def url_for(settings: LoxoSettings, endpoint: str) -> str:
@@ -64,22 +69,17 @@ class _BaseClient:
     def _log(self, method: str, target: str) -> None:
         # Method + URL only. Never headers (would leak the bearer token).
         if self._verbose:
-            print(f"{method.upper()} {target}", file=sys.stderr)
+            logger.debug("%s %s", method.upper(), target)
 
     def _log_retry(self, method: str, target: str, attempt: int, delay: float) -> None:
-        # Method + URL only, and only under --verbose. Otherwise a long wait
-        # still gets a one-line notice, so a throttled CLI run doesn't look
-        # frozen; both go to stderr so --json output on stdout stays clean.
+        # Verbose substitutes its detailed DEBUG line for the terse notice,
+        # so the two never double-report the same retry. Without verbose, a
+        # long wait is a WARNING: a retry signals degraded service, and an
+        # application that configured logging should see it.
         if self._verbose:
-            print(
-                f"{method.upper()} {target} -> retry {attempt} in {delay:.1f}s",
-                file=sys.stderr,
-            )
+            logger.debug("%s %s -> retry %d in %.1fs", method.upper(), target, attempt, delay)
         elif delay >= NOTICE_THRESHOLD:
-            print(
-                f"Request failed; retrying in {delay:.1f}s (attempt {attempt})...",
-                file=sys.stderr,
-            )
+            logger.warning("Request failed; retrying in %.1fs (attempt %d)...", delay, attempt)
 
     def _delay_or_raise(
         self,
@@ -133,10 +133,26 @@ class _BaseClient:
             )
         return LoxoError(f"Loxo {method} {endpoint} request failed: {exc}", status_code=None)
 
-    def _decode(self, response: httpx.Response) -> Any:
+    def _decode(self, response: httpx.Response, attempt: int = 1) -> Any:
         if not response.content:
             return None
-        return response.json()
+        try:
+            return response.json()
+        except ValueError as exc:
+            # json.JSONDecodeError subclasses ValueError. A 2xx carrying a
+            # non-JSON body (a proxy's HTML error page, a truncated
+            # response) must still surface as a LoxoError: every failure out
+            # of this client carries a status_code and an attempt count.
+            # `attempt` is passed in because this runs after the retry loop
+            # succeeded, outside the bookkeeping in _delay_or_raise — without
+            # it a body that failed to decode on attempt 3 would report 1.
+            error = LoxoError(
+                f"Loxo returned {response.status_code} with a non-JSON body: "
+                f"{response.text[:500]}",
+                status_code=response.status_code,
+            )
+            error.attempts = attempt
+            raise error from exc
 
 
 class LoxoClient(_BaseClient):
@@ -198,7 +214,7 @@ class LoxoClient(_BaseClient):
                 outcome = "fatal"
                 cause = exc
             else:
-                return self._decode(response)
+                return self._decode(response, attempt)
 
             delay = self._delay_or_raise(
                 error=error,
@@ -299,7 +315,7 @@ class AsyncLoxoClient(_BaseClient):
                 outcome = "fatal"
                 cause = exc
             else:
-                return self._decode(response)
+                return self._decode(response, attempt)
 
             delay = self._delay_or_raise(
                 error=error,

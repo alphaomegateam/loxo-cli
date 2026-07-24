@@ -1,5 +1,63 @@
 # Changelog
 
+## [0.6.1]
+
+### Fixed
+
+- **Two pagination loops that could never terminate**, each for its own
+  reason: `scroll_id` had no equivalent of the `after_id` non-advancing-cursor
+  guard, and `page` derived its next page number from the server's
+  `current_page` without requiring it to move. In both cases the same page was
+  refetched forever, hammering the API until it throttled the caller. Both bugs
+  predate 0.6.0 — they were present in 0.5.1's `paginate()` — and 0.6.0's
+  shared state machines meant `apaginate()` inherited them.
+  - `scroll_id`: a non-empty page carrying back the same `scroll_id` that was
+    just sent now stops the sweep without re-yielding that page. Loxo's
+    `scroll_id` is a position cursor (hex-encoded `[timestamp, last_item_id]`),
+    so a repeat can only mean the endpoint ignored it. First-page behavior,
+    where no cursor has been sent yet, is unchanged.
+  - `page`: the next page number now strictly increases, so a server that
+    reports the same `current_page` on every response — with a non-empty page
+    and no usable `total_count` — advances instead of standing still. A server
+    that reports a *higher* `current_page` is still followed, as before. Note
+    the narrower scope than the cursor guards: this fixes a server that
+    *honors* `page` while misreporting `current_page`. An endpoint that ignores
+    `page` outright is still not detected, because unlike a cursor scheme there
+    is nothing in the response to compare against.
+- A `2xx` response carrying a non-JSON body (an HTML error page injected by a
+  proxy, a truncated response) raised a bare `json.JSONDecodeError` with no
+  status code and no attempt count. It now raises `LoxoError` with the
+  response's status code, chained to the decode error. An empty body still
+  decodes to `None`.
+
+### Changed
+
+- **The client no longer prints to stderr; it logs** (#18). The retry notice
+  and the `--verbose` per-request lines went to stderr unconditionally, which
+  fired for library consumers — including a long-lived `AsyncLoxoClient` in a
+  web service — with no way to configure or silence it. Per-request lines are
+  now `DEBUG` and the long-retry notice is `WARNING` on the `loxo_cli` logger,
+  which carries a `NullHandler`, so the package is silent until an application
+  configures logging. Message content is unchanged, and both remain
+  method-and-URL only — headers and the API key are still never logged.
+  **Library consumers who want to see retry notices must now configure
+  logging** (e.g. `logging.basicConfig(level=logging.WARNING)`).
+- CLI output is unchanged: `loxo` attaches its own stderr handler, so
+  `--verbose` still shows request lines, a long retry still prints its notice
+  without `--verbose`, and stdout stays clean for `--json`.
+
+### Added
+
+- `--quiet` now does something (#18). It was declared with help text but bound
+  to nothing; it raises the CLI's log threshold to errors only, suppressing
+  retry notices and, if also passed, `--verbose` request lines. Command results
+  on stdout are unaffected.
+- Test coverage for the client's `except httpx.HTTPError` branch (#18), which
+  is where `httpx.TooManyRedirects` and `httpx.DecodingError` are marked fatal
+  — neither is a `TransportError`, so `classify_exception()` never sees them.
+  Both are now pinned as single-attempt, never retried, in the sync and async
+  clients.
+
 ## [0.6.0]
 
 ### Added

@@ -51,6 +51,27 @@ def test_classify_exception(exc, expected):
     assert classify_exception(exc) == expected
 
 
+@pytest.mark.parametrize(
+    "exc",
+    [
+        httpx.TooManyRedirects("boom", request=httpx.Request("GET", "https://x")),
+        httpx.DecodingError("boom", request=httpx.Request("GET", "https://x")),
+    ],
+)
+def test_non_transport_request_errors_never_reach_classify_exception(exc):
+    """The premise behind the client's separate `fatal` branch.
+
+    classify_exception only ever sees transport failures — its fallthrough
+    returns "timeout", which would be wrong for these two. They are
+    RequestErrors but NOT TransportErrors, so the client's
+    `except httpx.TransportError` never catches them and its
+    `except httpx.HTTPError` branch marks them fatal directly. See
+    tests/test_client.py for that end of it.
+    """
+    assert not isinstance(exc, httpx.TransportError)
+    assert isinstance(exc, httpx.HTTPError)
+
+
 @pytest.mark.parametrize("method", ["GET", "HEAD", "PUT", "DELETE", "OPTIONS", "get"])
 @pytest.mark.parametrize("outcome", ["throttled", "server", "timeout", "connect"])
 def test_idempotent_methods_retry_everything_but_fatal(method, outcome):

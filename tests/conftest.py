@@ -7,9 +7,29 @@ delay values assert on the pure helpers in loxo_cli.retry instead.
 """
 
 import asyncio
+import logging
 import time
 
 import pytest
+
+
+@pytest.fixture(autouse=True)
+def _reset_package_logger():
+    """Undo whatever a CLI invocation did to the `loxo_cli` logger.
+
+    The CLI attaches a stderr handler and sets a level on the package
+    logger. Both are process-global, so without this a test that invokes
+    the CLI would leave a handler bound to a dead capture stream and change
+    what later library-level tests see.
+    """
+    logger = logging.getLogger("loxo_cli")
+    handlers = list(logger.handlers)
+    level = logger.level
+    propagate = logger.propagate
+    yield
+    logger.handlers = handlers
+    logger.setLevel(level)
+    logger.propagate = propagate
 
 
 @pytest.fixture(autouse=True)

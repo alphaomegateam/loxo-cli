@@ -1,5 +1,7 @@
 """Async client tests — the mirror of test_client.py."""
 
+import logging
+
 import httpx
 import pytest
 import respx
@@ -20,6 +22,18 @@ async def test_request_sends_auth_and_returns_json():
     async with AsyncLoxoClient(SETTINGS) as client:
         assert await client.get("people") == {"people": []}
     assert route.calls.last.request.headers["Authorization"] == "Bearer testkey"
+
+
+@respx.mock
+async def test_non_json_success_body_raises_loxo_error():
+    respx.get("https://app.loxo.co/api/acme/people").mock(
+        return_value=httpx.Response(200, text="<html>502 Bad Gateway</html>")
+    )
+    async with AsyncLoxoClient(SETTINGS) as client:
+        with pytest.raises(LoxoError) as ei:
+            await client.get("people")
+    assert ei.value.status_code == 200
+    assert isinstance(ei.value.__cause__, ValueError)
 
 
 @respx.mock
@@ -124,19 +138,21 @@ async def test_exhausted_retries_chain_the_originating_httpx_error():
 
 
 @respx.mock
-async def test_long_retry_is_announced_on_stderr_without_verbose(capsys):
+async def test_long_retry_is_announced_without_verbose(caplog, capsys):
     respx.get("https://app.loxo.co/api/acme/people").mock(
         side_effect=[
             httpx.Response(429, headers={"Retry-After": "5"}),
             httpx.Response(200, json={"people": []}),
         ]
     )
-    async with AsyncLoxoClient(SETTINGS) as client:
-        assert await client.get("people") == {"people": []}
+    with caplog.at_level(logging.DEBUG, logger="loxo_cli"):
+        async with AsyncLoxoClient(SETTINGS) as client:
+            assert await client.get("people") == {"people": []}
+    assert "retrying in 5.0s" in caplog.text
+    assert "testkey" not in caplog.text
     captured = capsys.readouterr()
-    assert "retrying in 5.0s" in captured.err
-    assert "testkey" not in captured.err
     assert captured.out == ""
+    assert captured.err == ""  # a library never prints; it logs
 
 
 @respx.mock
@@ -169,3 +185,17 @@ async def test_build_async_client_returns_a_usable_client():
         assert await client.get("people") == {"ok": True}
     finally:
         await client.aclose()
+
+
+@respx.mock
+@pytest.mark.parametrize("exc_type", [httpx.TooManyRedirects, httpx.DecodingError])
+async def test_non_transport_request_errors_are_fatal_and_not_retried(exc_type):
+    route = respx.get("https://app.loxo.co/api/acme/people").mock(
+        side_effect=exc_type("boom", request=httpx.Request("GET", "https://x"))
+    )
+    async with AsyncLoxoClient(SETTINGS) as client:
+        with pytest.raises(LoxoError) as ei:
+            await client.get("people")
+    assert route.call_count == 1
+    assert ei.value.attempts == 1
+    assert isinstance(ei.value.__cause__, exc_type)
