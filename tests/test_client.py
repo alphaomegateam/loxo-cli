@@ -5,6 +5,7 @@ import respx
 from loxo_cli.client import LoxoClient, url_for
 from loxo_cli.config import LoxoSettings
 from loxo_cli.errors import LoxoError
+from loxo_cli.retry import RetryPolicy
 
 SETTINGS = LoxoSettings(api_key="testkey", slug="acme", base_url="https://app.loxo.co/api")
 
@@ -73,3 +74,101 @@ def test_error_message_never_contains_api_key():
         with pytest.raises(LoxoError) as ei:
             client.get("people")
     assert "testkey" not in str(ei.value)
+
+
+@respx.mock
+def test_429_then_200_succeeds_in_two_calls():
+    route = respx.get("https://app.loxo.co/api/acme/people").mock(
+        side_effect=[
+            httpx.Response(429, text="slow down"),
+            httpx.Response(200, json={"people": []}),
+        ]
+    )
+    with LoxoClient(SETTINGS) as client:
+        assert client.get("people") == {"people": []}
+    assert route.call_count == 2
+
+
+@respx.mock
+def test_get_5xx_retries_to_exhaustion_then_raises():
+    route = respx.get("https://app.loxo.co/api/acme/people").mock(
+        return_value=httpx.Response(500, text="boom")
+    )
+    with LoxoClient(SETTINGS) as client:
+        with pytest.raises(LoxoError) as ei:
+            client.get("people")
+    # 1 initial attempt + 3 retries
+    assert route.call_count == 4
+    assert ei.value.attempts == 4
+
+
+@respx.mock
+def test_post_5xx_is_not_retried():
+    route = respx.post("https://app.loxo.co/api/acme/people").mock(
+        return_value=httpx.Response(500, text="boom")
+    )
+    with LoxoClient(SETTINGS) as client:
+        with pytest.raises(LoxoError) as ei:
+            client.post("people", json={"person": {}})
+    assert route.call_count == 1
+    assert ei.value.attempts == 1
+
+
+@respx.mock
+def test_post_429_is_retried():
+    route = respx.post("https://app.loxo.co/api/acme/people").mock(
+        side_effect=[
+            httpx.Response(429, text="slow down"),
+            httpx.Response(200, json={"person": {"id": 1}}),
+        ]
+    )
+    with LoxoClient(SETTINGS) as client:
+        assert client.post("people", json={"person": {}}) == {"person": {"id": 1}}
+    assert route.call_count == 2
+
+
+@respx.mock
+def test_post_connect_error_is_retried():
+    route = respx.post("https://app.loxo.co/api/acme/people").mock(
+        side_effect=[httpx.ConnectError("refused"), httpx.Response(200, json={"ok": True})]
+    )
+    with LoxoClient(SETTINGS) as client:
+        assert client.post("people", json={}) == {"ok": True}
+    assert route.call_count == 2
+
+
+@respx.mock
+def test_retry_after_header_drives_the_delay(slept):
+    respx.get("https://app.loxo.co/api/acme/people").mock(
+        side_effect=[
+            httpx.Response(429, headers={"Retry-After": "2"}, text="slow down"),
+            httpx.Response(200, json={"people": []}),
+        ]
+    )
+    with LoxoClient(SETTINGS) as client:
+        client.get("people")
+    assert slept == [2.0]
+
+
+@respx.mock
+def test_retries_can_be_disabled():
+    route = respx.get("https://app.loxo.co/api/acme/people").mock(
+        return_value=httpx.Response(500, text="boom")
+    )
+    with LoxoClient(SETTINGS, retry=RetryPolicy(max_retries=0)) as client:
+        with pytest.raises(LoxoError):
+            client.get("people")
+    assert route.call_count == 1
+
+
+@respx.mock
+def test_verbose_logs_each_retry_without_leaking_the_key(capsys):
+    respx.get("https://app.loxo.co/api/acme/people").mock(
+        side_effect=[httpx.Response(429), httpx.Response(200, json={})]
+    )
+    with LoxoClient(SETTINGS, verbose=True) as client:
+        client.get("people")
+    err = capsys.readouterr().err
+    assert "retry 1" in err
+    assert "testkey" not in err
+    assert "Authorization" not in err
