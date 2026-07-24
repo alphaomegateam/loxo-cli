@@ -4,7 +4,8 @@ import httpx
 import respx
 from typer.testing import CliRunner
 
-from loxo_cli.__main__ import app
+from loxo_cli.__main__ import AppState, app
+from loxo_cli.retry import RetryPolicy
 
 runner = CliRunner()
 
@@ -19,8 +20,6 @@ def _plain(text: str) -> str:
 
 @respx.mock
 def test_appstate_settings_and_client(tmp_path):
-    from loxo_cli.__main__ import AppState
-
     respx.get("https://app.loxo.co/api/acme/ping").mock(
         return_value=httpx.Response(200, json={"ok": True})
     )
@@ -45,10 +44,6 @@ def test_callback_registers_global_options():
     assert "--profile" in out
     assert "--json" in out
     assert "--jq" in out
-
-
-from loxo_cli.__main__ import AppState  # noqa: E402
-from loxo_cli.retry import RetryPolicy  # noqa: E402
 
 
 def _retry_state(**kw):
@@ -100,3 +95,14 @@ def test_flag_beats_env(monkeypatch):
         assert client._retry.max_retries == 1
     finally:
         client.close()
+
+
+def test_appstate_repr_hides_api_key():
+    # Same leak class as #13 on LoxoSettings: AppState is ctx.obj, so a
+    # traceback through Click or a pytest assertion dump reprs it.
+    state = _retry_state(api_key="loxo_live_SECRET123")
+    r = repr(state)
+    assert "SECRET123" not in r
+    assert "loxo_live_SECRET123" not in r
+    assert "acme" in r  # non-secret fields still shown for debugging
+    assert state.api_key == "loxo_live_SECRET123"  # value itself is untouched

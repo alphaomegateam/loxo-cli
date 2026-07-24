@@ -19,7 +19,7 @@ BASE = "https://app.loxo.co/api/acme/things"
 
 @respx.mock
 def test_page_scheme_survives_missing_per_page_in_pagination_block():
-    respx.get(BASE).mock(
+    route = respx.get(BASE).mock(
         side_effect=[
             httpx.Response(
                 200,
@@ -32,3 +32,6 @@ def test_page_scheme_survives_missing_per_page_in_pagination_block():
         items = list(paginate(client, "things", scheme="page", items_key="results", per_page=None))
     # Falls through to the empty-page guard rather than raising TypeError.
     assert items == [{"id": 1}]
+    # And it got there by fetching the second page, not by stopping early for
+    # some other reason that happens to yield the same items.
+    assert route.call_count == 2

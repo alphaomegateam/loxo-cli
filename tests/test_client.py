@@ -151,6 +151,62 @@ def test_retry_after_header_drives_the_delay(slept):
 
 
 @respx.mock
+def test_retry_after_zero_still_retries(slept):
+    # `Retry-After: 0` yields a 0.0 delay. The retry decision must test
+    # `delay is None`, not truthiness, or this request gives up immediately.
+    route = respx.get("https://app.loxo.co/api/acme/people").mock(
+        side_effect=[
+            httpx.Response(429, headers={"Retry-After": "0"}, text="slow down"),
+            httpx.Response(200, json={"people": []}),
+        ]
+    )
+    with LoxoClient(SETTINGS) as client:
+        assert client.get("people") == {"people": []}
+    assert route.call_count == 2
+    assert slept == [0.0]
+
+
+@respx.mock
+def test_exhausted_retries_chain_the_originating_httpx_error():
+    respx.get("https://app.loxo.co/api/acme/people").mock(
+        return_value=httpx.Response(500, text="boom")
+    )
+    with LoxoClient(SETTINGS) as client:
+        with pytest.raises(LoxoError) as ei:
+            client.get("people")
+    assert isinstance(ei.value.__cause__, httpx.HTTPStatusError)
+
+
+@respx.mock
+def test_long_retry_is_announced_on_stderr_without_verbose(capsys):
+    respx.get("https://app.loxo.co/api/acme/people").mock(
+        side_effect=[
+            httpx.Response(429, headers={"Retry-After": "5"}, text="slow down"),
+            httpx.Response(200, json={"people": []}),
+        ]
+    )
+    with LoxoClient(SETTINGS) as client:
+        assert client.get("people") == {"people": []}
+    captured = capsys.readouterr()
+    assert "retrying in 5.0s" in captured.err
+    assert "testkey" not in captured.err
+    assert captured.out == ""  # stdout stays clean for --json
+
+
+@respx.mock
+def test_short_retry_stays_quiet_without_verbose(capsys):
+    respx.get("https://app.loxo.co/api/acme/people").mock(
+        side_effect=[
+            httpx.Response(429, headers={"Retry-After": "0"}),
+            httpx.Response(200, json={}),
+        ]
+    )
+    with LoxoClient(SETTINGS) as client:
+        client.get("people")
+    assert capsys.readouterr().err == ""
+
+
+@respx.mock
 def test_retries_can_be_disabled():
     route = respx.get("https://app.loxo.co/api/acme/people").mock(
         return_value=httpx.Response(500, text="boom")
@@ -172,3 +228,18 @@ def test_verbose_logs_each_retry_without_leaking_the_key(capsys):
     assert "retry 1" in err
     assert "testkey" not in err
     assert "Authorization" not in err
+
+
+@respx.mock
+def test_verbose_does_not_double_print_the_long_wait_notice(capsys):
+    respx.get("https://app.loxo.co/api/acme/people").mock(
+        side_effect=[
+            httpx.Response(429, headers={"Retry-After": "5"}),
+            httpx.Response(200, json={}),
+        ]
+    )
+    with LoxoClient(SETTINGS, verbose=True) as client:
+        client.get("people")
+    err = capsys.readouterr().err
+    assert "retry 1 in 5.0s" in err
+    assert "Request failed" not in err

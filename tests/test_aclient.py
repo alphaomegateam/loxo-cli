@@ -98,6 +98,48 @@ async def test_retry_after_header_drives_the_delay(slept):
 
 
 @respx.mock
+async def test_retry_after_zero_still_retries(slept):
+    # Mirror of the sync guard: a 0.0 delay must not be read as "give up".
+    route = respx.get("https://app.loxo.co/api/acme/people").mock(
+        side_effect=[
+            httpx.Response(429, headers={"Retry-After": "0"}),
+            httpx.Response(200, json={"people": []}),
+        ]
+    )
+    async with AsyncLoxoClient(SETTINGS) as client:
+        assert await client.get("people") == {"people": []}
+    assert route.call_count == 2
+    assert slept == [0.0]
+
+
+@respx.mock
+async def test_exhausted_retries_chain_the_originating_httpx_error():
+    respx.get("https://app.loxo.co/api/acme/people").mock(
+        return_value=httpx.Response(500, text="boom")
+    )
+    async with AsyncLoxoClient(SETTINGS) as client:
+        with pytest.raises(LoxoError) as ei:
+            await client.get("people")
+    assert isinstance(ei.value.__cause__, httpx.HTTPStatusError)
+
+
+@respx.mock
+async def test_long_retry_is_announced_on_stderr_without_verbose(capsys):
+    respx.get("https://app.loxo.co/api/acme/people").mock(
+        side_effect=[
+            httpx.Response(429, headers={"Retry-After": "5"}),
+            httpx.Response(200, json={"people": []}),
+        ]
+    )
+    async with AsyncLoxoClient(SETTINGS) as client:
+        assert await client.get("people") == {"people": []}
+    captured = capsys.readouterr()
+    assert "retrying in 5.0s" in captured.err
+    assert "testkey" not in captured.err
+    assert captured.out == ""
+
+
+@respx.mock
 async def test_retries_can_be_disabled():
     route = respx.get("https://app.loxo.co/api/acme/people").mock(return_value=httpx.Response(500))
     async with AsyncLoxoClient(SETTINGS, retry=RetryPolicy(max_retries=0)) as client:

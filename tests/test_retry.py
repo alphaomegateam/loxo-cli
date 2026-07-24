@@ -129,6 +129,35 @@ def test_next_delay_stops_after_max_retries():
     assert next_delay(attempt=4, method="GET", outcome="server", policy=POLICY, elapsed=0.0) is None
 
 
+def test_next_delay_converts_the_1_based_attempt_to_a_0_based_backoff():
+    # attempt=1 is the FIRST retry, so it must use compute_delay(0) — one
+    # base_delay, not two. An off-by-one here silently doubles every backoff.
+    assert next_delay(
+        attempt=1,
+        method="GET",
+        outcome="server",
+        policy=POLICY,
+        elapsed=0.0,
+        jitter=lambda: 1.0,
+    ) == pytest.approx(POLICY.base_delay)
+
+
+def test_next_delay_returns_zero_not_none_for_retry_after_zero():
+    # `Retry-After: 0` is a legitimate "retry immediately". The client checks
+    # `delay is None`, so 0.0 must survive as a real delay; a truthiness check
+    # anywhere on this path would turn it into "give up".
+    delay = next_delay(
+        attempt=1,
+        method="GET",
+        outcome="throttled",
+        policy=POLICY,
+        elapsed=0.0,
+        retry_after=0.0,
+    )
+    assert delay == 0.0
+    assert delay is not None
+
+
 def test_next_delay_stops_when_policy_forbids_the_method():
     assert (
         next_delay(attempt=1, method="POST", outcome="server", policy=POLICY, elapsed=0.0) is None
