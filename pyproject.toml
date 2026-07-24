@@ -1,6 +1,6 @@
 [project]
 name = "loxo-cli"
-version = "0.5.1"
+version = "0.6.0"
 description = "Unofficial command-line interface for the Loxo recruiting ATS/CRM API"
 readme = "README.md"
 license = { text = "MIT" }
@@ -24,6 +24,7 @@ Homepage = "https://github.com/alphaomegateam/loxo-cli"
 dev = [
     "pytest>=8",
     "pytest-mock>=3.14",
+    "pytest-asyncio>=0.24",
     "respx>=0.21",
     "ruff>=0.6",
     "black>=24",
@@ -40,6 +41,8 @@ packages = ["src/loxo_cli"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 addopts = "-ra"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 
 [tool.ruff]
 line-length = 100

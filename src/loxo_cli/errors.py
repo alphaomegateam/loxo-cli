@@ -30,10 +30,16 @@ class LoxoError(click.ClickException):
         *,
         status_code: int | None = None,
         is_timeout: bool = False,
+        retry_after: float | None = None,
     ) -> None:
         super().__init__(message)
         self.status_code = status_code
         self.is_timeout = is_timeout
+        # Parsed Retry-After, when the server sent a usable one.
+        self.retry_after = retry_after
+        # How many HTTP calls were made. The client overwrites this so an
+        # exhausted retry is distinguishable from a first-attempt failure.
+        self.attempts = 1
         self.exit_code = _loxo_exit_code(self)
 
     @property
@@ -43,6 +49,10 @@ class LoxoError(click.ClickException):
     @property
     def is_5xx(self) -> bool:
         return self.status_code is not None and 500 <= self.status_code < 600
+
+    @property
+    def is_rate_limited(self) -> bool:
+        return self.status_code == 429
 
 
 def _loxo_exit_code(err: "LoxoError") -> int:

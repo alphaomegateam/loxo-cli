@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Any, Iterator
+from typing import Any, AsyncIterator, Iterator, Protocol
 
-from loxo_cli.client import LoxoClient
+from loxo_cli.client import AsyncLoxoClient, LoxoClient
 
 
 def detect_scheme(data: Any) -> str:
@@ -26,6 +26,147 @@ def extract_items(data: Any, items_key: str | None) -> list:
     return []
 
 
+class Paginator(Protocol):
+    """Pure cursor state machine for one pagination scheme.
+
+    The schemes disagree about when yielding happens relative to stopping:
+    scroll_id and page yield and then decide, but after_id must be able to
+    receive a non-empty page, yield nothing, and stop. So feed() returns
+    both, and the drive loop never extracts items itself.
+    """
+
+    def next_params(self) -> dict[str, Any] | None:
+        """Params for the next request, or None to stop without fetching."""
+
+    def feed(self, data: Any) -> tuple[list, bool]:
+        """Consume a response; return (items to yield, done)."""
+
+
+class _ScrollPaginator:
+    def __init__(self, params: dict[str, Any], per_page: int | None, items_key: str | None):
+        self._base = params
+        self._per_page = per_page
+        self._items_key = items_key
+        self._scroll_id: str | None = None
+        self._done = False
+
+    def next_params(self) -> dict[str, Any] | None:
+        if self._done:
+            return None
+        page_params = dict(self._base)
+        # Only when set: scroll endpoints (companies, deals) reject per_page
+        # with HTTP 422, so their callers pass per_page=None deliberately.
+        if self._per_page is not None:
+            page_params.setdefault("per_page", self._per_page)
+        if self._scroll_id:
+            page_params["scroll_id"] = self._scroll_id
+        return page_params
+
+    def feed(self, data: Any) -> tuple[list, bool]:
+        items = extract_items(data, self._items_key)
+        if not items:
+            self._done = True
+            return [], True
+        self._scroll_id = data.get("scroll_id") if isinstance(data, dict) else None
+        if not self._scroll_id:
+            self._done = True
+        return items, self._done
+
+
+class _PagePaginator:
+    def __init__(self, params: dict[str, Any], per_page: int | None, items_key: str | None):
+        self._base = params
+        self._per_page = per_page
+        self._items_key = items_key
+        self._page = 1
+        self._done = False
+
+    def next_params(self) -> dict[str, Any] | None:
+        if self._done:
+            return None
+        page_params = dict(self._base)
+        page_params["page"] = self._page
+        if self._per_page is not None:
+            page_params.setdefault("per_page", self._per_page)
+        return page_params
+
+    def feed(self, data: Any) -> tuple[list, bool]:
+        items = extract_items(data, self._items_key)
+        if not items:
+            self._done = True
+            return [], True
+        pag = data.get("pagination", {}) if isinstance(data, dict) else {}
+        total = pag.get("total_count")
+        size = pag.get("per_page", self._per_page)
+        current = pag.get("current_page", self._page)
+        # Only trust the count-based stop when total_count AND a page size
+        # are actually reported; otherwise keep paging until results come
+        # back empty, so a missing total_count can't truncate results and a
+        # missing per_page can't raise TypeError.
+        if total is not None and size is not None and current * size >= total:
+            self._done = True
+        self._page = current + 1
+        return items, self._done
+
+
+class _AfterIdPaginator:
+    def __init__(self, params: dict[str, Any], items_key: str | None):
+        self._base = params
+        self._items_key = items_key
+        self._after_id: Any = None
+        self._done = False
+
+    def next_params(self) -> dict[str, Any] | None:
+        if self._done:
+            return None
+        page_params = dict(self._base)
+        # after_id endpoints ignore per_page entirely; never send it.
+        if self._after_id is not None:
+            page_params["after_id"] = self._after_id
+        return page_params
+
+    def feed(self, data: Any) -> tuple[list, bool]:
+        items = extract_items(data, self._items_key)
+        if not items:
+            self._done = True
+            return [], True
+        next_after_id = items[-1].get("id") if isinstance(items[-1], dict) else None
+        # If the endpoint ignored after_id and returned the same page again
+        # (some reference endpoints, e.g. dynamic_fields, return a fixed
+        # list and ignore the cursor), the cursor won't advance. Stop
+        # WITHOUT re-yielding the duplicate page. Without this guard those
+        # endpoints loop forever, hammering the API until it 429s us.
+        # Only applies once a cursor has actually been sent: on the first
+        # page after_id is None, and a no-id last item there is a
+        # legitimate single, complete page that must still be yielded.
+        if self._after_id is not None and next_after_id == self._after_id:
+            self._done = True
+            return [], True
+        self._after_id = next_after_id
+        # Last item has no id -> can't build a next cursor, so this is the
+        # final page.
+        if next_after_id is None:
+            self._done = True
+        return items, self._done
+
+
+def make_paginator(
+    scheme: str,
+    *,
+    params: dict[str, Any] | None = None,
+    per_page: int | None = 50,
+    items_key: str | None = None,
+) -> Paginator:
+    base = dict(params or {})
+    if scheme == "scroll_id":
+        return _ScrollPaginator(base, per_page, items_key)
+    if scheme == "page":
+        return _PagePaginator(base, per_page, items_key)
+    if scheme == "after_id":
+        return _AfterIdPaginator(base, items_key)
+    raise ValueError(f"Unknown pagination scheme: {scheme}")
+
+
 def paginate(
     client: LoxoClient,
     endpoint: str,
@@ -35,74 +176,36 @@ def paginate(
     params: dict[str, Any] | None = None,
     per_page: int | None = 50,
 ) -> Iterator[Any]:
-    base_params = dict(params or {})
+    paginator = make_paginator(scheme, params=params, per_page=per_page, items_key=items_key)
+    while True:
+        page_params = paginator.next_params()
+        if page_params is None:
+            return
+        data = client.get(endpoint, params=page_params)
+        items, done = paginator.feed(data)
+        yield from items
+        if done:
+            return
 
-    if scheme == "scroll_id":
-        scroll_id: str | None = None
-        while True:
-            page_params = dict(base_params)
-            if per_page is not None:
-                page_params.setdefault("per_page", per_page)
-            if scroll_id:
-                page_params["scroll_id"] = scroll_id
-            data = client.get(endpoint, params=page_params)
-            items = extract_items(data, items_key)
-            if not items:
-                return
-            yield from items
-            scroll_id = data.get("scroll_id") if isinstance(data, dict) else None
-            if not scroll_id:
-                return
 
-    elif scheme == "page":
-        page = 1
-        while True:
-            page_params = dict(base_params)
-            page_params["page"] = page
-            if per_page is not None:
-                page_params.setdefault("per_page", per_page)
-            data = client.get(endpoint, params=page_params)
-            items = extract_items(data, items_key)
-            if not items:
-                return
-            yield from items
-            pag = data.get("pagination", {}) if isinstance(data, dict) else {}
-            total = pag.get("total_count")
-            size = pag.get("per_page", per_page)
-            current = pag.get("current_page", page)
-            # Only trust the count-based stop when total_count is actually
-            # reported; otherwise keep paging until results come back empty
-            # (the guard above) so a missing total_count can't truncate results.
-            if total is not None and current * size >= total:
-                return
-            page = current + 1
-
-    elif scheme == "after_id":
-        after_id: Any = None
-        while True:
-            page_params = dict(base_params)
-            if after_id is not None:
-                page_params["after_id"] = after_id
-            data = client.get(endpoint, params=page_params)
-            items = extract_items(data, items_key)
-            if not items:
-                return
-            next_after_id = items[-1].get("id") if isinstance(items[-1], dict) else None
-            # If the endpoint ignored after_id and returned the same page again
-            # (some reference endpoints, e.g. dynamic_fields, return a fixed list
-            # and ignore the cursor), the cursor won't advance. Stop without
-            # re-yielding the duplicate page. Without this guard those endpoints
-            # loop forever, hammering the API until it rate-limits us (429).
-            # Only applies once a cursor has actually been sent: on the first
-            # page after_id is None, and a no-id last item there is a legitimate
-            # single, complete page that must still be yielded.
-            if after_id is not None and next_after_id == after_id:
-                return
-            yield from items
-            # Last item has no id -> can't build a next cursor, so this is the
-            # final page.
-            if next_after_id is None:
-                return
-            after_id = next_after_id
-    else:
-        raise ValueError(f"Unknown pagination scheme: {scheme}")
+async def apaginate(
+    client: AsyncLoxoClient,
+    endpoint: str,
+    *,
+    scheme: str,
+    items_key: str | None = None,
+    params: dict[str, Any] | None = None,
+    per_page: int | None = 50,
+) -> AsyncIterator[Any]:
+    """Async twin of paginate(). Shares every Paginator, so every guard too."""
+    paginator = make_paginator(scheme, params=params, per_page=per_page, items_key=items_key)
+    while True:
+        page_params = paginator.next_params()
+        if page_params is None:
+            return
+        data = await client.get(endpoint, params=page_params)
+        items, done = paginator.feed(data)
+        for item in items:
+            yield item
+        if done:
+            return

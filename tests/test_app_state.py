@@ -4,7 +4,8 @@ import httpx
 import respx
 from typer.testing import CliRunner
 
-from loxo_cli.__main__ import app
+from loxo_cli.__main__ import AppState, app
+from loxo_cli.retry import RetryPolicy
 
 runner = CliRunner()
 
@@ -19,8 +20,6 @@ def _plain(text: str) -> str:
 
 @respx.mock
 def test_appstate_settings_and_client(tmp_path):
-    from loxo_cli.__main__ import AppState
-
     respx.get("https://app.loxo.co/api/acme/ping").mock(
         return_value=httpx.Response(200, json={"ok": True})
     )
@@ -45,3 +44,65 @@ def test_callback_registers_global_options():
     assert "--profile" in out
     assert "--json" in out
     assert "--jq" in out
+
+
+def _retry_state(**kw):
+    base = dict(
+        profile=None,
+        api_key="k",
+        slug="acme",
+        base_url="https://app.loxo.co/api",
+        json_out=False,
+        jq=None,
+        verbose=False,
+        no_color=False,
+    )
+    base.update(kw)
+    return AppState(**base)
+
+
+def test_client_uses_the_default_policy_when_no_flag_or_env(monkeypatch):
+    monkeypatch.delenv("LOXO_MAX_RETRIES", raising=False)
+    client = _retry_state().client()
+    try:
+        assert client._retry.max_retries == RetryPolicy().max_retries
+    finally:
+        client.close()
+
+
+def test_retries_flag_overrides_the_default(monkeypatch):
+    monkeypatch.delenv("LOXO_MAX_RETRIES", raising=False)
+    client = _retry_state(retries=0).client()
+    try:
+        assert client._retry.max_retries == 0
+    finally:
+        client.close()
+
+
+def test_env_var_is_honored_when_no_flag(monkeypatch):
+    monkeypatch.setenv("LOXO_MAX_RETRIES", "7")
+    client = _retry_state().client()
+    try:
+        assert client._retry.max_retries == 7
+    finally:
+        client.close()
+
+
+def test_flag_beats_env(monkeypatch):
+    monkeypatch.setenv("LOXO_MAX_RETRIES", "7")
+    client = _retry_state(retries=1).client()
+    try:
+        assert client._retry.max_retries == 1
+    finally:
+        client.close()
+
+
+def test_appstate_repr_hides_api_key():
+    # Same leak class as #13 on LoxoSettings: AppState is ctx.obj, so a
+    # traceback through Click or a pytest assertion dump reprs it.
+    state = _retry_state(api_key="loxo_live_SECRET123")
+    r = repr(state)
+    assert "SECRET123" not in r
+    assert "loxo_live_SECRET123" not in r
+    assert "acme" in r  # non-secret fields still shown for debugging
+    assert state.api_key == "loxo_live_SECRET123"  # value itself is untouched
