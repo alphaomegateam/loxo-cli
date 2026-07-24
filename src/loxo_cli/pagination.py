@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Any, Iterator, Protocol
+from typing import Any, AsyncIterator, Iterator, Protocol
 
-from loxo_cli.client import LoxoClient
+from loxo_cli.client import AsyncLoxoClient, LoxoClient
 
 
 def detect_scheme(data: Any) -> str:
@@ -184,5 +184,28 @@ def paginate(
         data = client.get(endpoint, params=page_params)
         items, done = paginator.feed(data)
         yield from items
+        if done:
+            return
+
+
+async def apaginate(
+    client: AsyncLoxoClient,
+    endpoint: str,
+    *,
+    scheme: str,
+    items_key: str | None = None,
+    params: dict[str, Any] | None = None,
+    per_page: int | None = 50,
+) -> AsyncIterator[Any]:
+    """Async twin of paginate(). Shares every Paginator, so every guard too."""
+    paginator = make_paginator(scheme, params=params, per_page=per_page, items_key=items_key)
+    while True:
+        page_params = paginator.next_params()
+        if page_params is None:
+            return
+        data = await client.get(endpoint, params=page_params)
+        items, done = paginator.feed(data)
+        for item in items:
+            yield item
         if done:
             return
