@@ -185,3 +185,17 @@ async def test_build_async_client_returns_a_usable_client():
         assert await client.get("people") == {"ok": True}
     finally:
         await client.aclose()
+
+
+@respx.mock
+@pytest.mark.parametrize("exc_type", [httpx.TooManyRedirects, httpx.DecodingError])
+async def test_non_transport_request_errors_are_fatal_and_not_retried(exc_type):
+    route = respx.get("https://app.loxo.co/api/acme/people").mock(
+        side_effect=exc_type("boom", request=httpx.Request("GET", "https://x"))
+    )
+    async with AsyncLoxoClient(SETTINGS) as client:
+        with pytest.raises(LoxoError) as ei:
+            await client.get("people")
+    assert route.call_count == 1
+    assert ei.value.attempts == 1
+    assert isinstance(ei.value.__cause__, exc_type)

@@ -271,3 +271,20 @@ def test_verbose_does_not_double_report_the_long_wait_notice(caplog):
             client.get("people")
     assert "retry 1 in 5.0s" in caplog.text
     assert "Request failed" not in caplog.text
+
+
+@respx.mock
+@pytest.mark.parametrize("exc_type", [httpx.TooManyRedirects, httpx.DecodingError])
+def test_non_transport_request_errors_are_fatal_and_not_retried(exc_type):
+    # The `fatal` branch of the client's exception routing: neither is a
+    # transport failure, and replaying either only delays the same error.
+    route = respx.get("https://app.loxo.co/api/acme/people").mock(
+        side_effect=exc_type("boom", request=httpx.Request("GET", "https://x"))
+    )
+    with LoxoClient(SETTINGS) as client:
+        with pytest.raises(LoxoError) as ei:
+            client.get("people")
+    assert route.call_count == 1
+    assert ei.value.attempts == 1
+    assert ei.value.status_code is None
+    assert isinstance(ei.value.__cause__, exc_type)

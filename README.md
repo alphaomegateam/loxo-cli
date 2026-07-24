@@ -116,7 +116,9 @@ honoring a `Retry-After` header when the server sends one. A 60-second wall-cloc
 caps the accumulated backoff for a single request; because that budget only gates the
 *next* sleep, the attempt already in flight still gets its own 30-second timeout, so the
 worst case for one request is nearer ~90 seconds. Any wait of a second or more prints a
-one-line notice to stderr (stdout stays clean for `--json`).
+one-line notice to stderr (stdout stays clean for `--json`); pass `--quiet` to suppress it.
+Using the client as a library instead? See [Logging](#logging) — there the notice is a log
+record, and you decide whether it is shown.
 
 Retries are method-aware: `GET`/`HEAD`/`PUT`/`DELETE`/`OPTIONS` retry on all of the above,
 while `POST` retries only when the request provably did not take effect (a 429, or a
@@ -127,7 +129,31 @@ duplicate record.
 loxo --retries 0 jobs list          # fail fast, the pre-0.6.0 behavior
 LOXO_MAX_RETRIES=0 loxo jobs list   # same, via the environment
 loxo --retries 5 jobs list --all    # more patient
+loxo --quiet jobs list --all        # no retry notices on stderr
 ```
+
+## Logging
+
+Since 0.6.1 the client never writes to stderr itself — it logs, on the `loxo_cli` logger,
+and the package carries a `NullHandler` so it stays completely silent until your
+application asks for output:
+
+- per-request lines (method and URL, only when the client is built with `verbose=True`) at
+  `DEBUG`
+- the long-retry notice at `WARNING`, because a retry means the service is degraded
+
+Headers are never logged, so the API key cannot reach a log record.
+
+```python
+import logging
+
+logging.basicConfig(level=logging.WARNING)   # surfaces retry notices
+logging.getLogger("loxo_cli").setLevel(logging.DEBUG)  # ...and request lines
+```
+
+The CLI attaches its own stderr handler, which is why `loxo --verbose` and the retry
+notice still appear in a terminal. `--quiet` raises that handler's threshold to errors
+only and wins over `--verbose`; neither affects command results on stdout.
 
 ## Exit codes
 
@@ -203,6 +229,11 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
+
+# Retry notices are WARNING records on the `loxo_cli` logger and are dropped
+# until something handles them. Under uvicorn's logging config they show up as
+# soon as the level allows; otherwise configure it yourself. See "Logging".
 
 
 @app.get("/jobs/{job_id}")
