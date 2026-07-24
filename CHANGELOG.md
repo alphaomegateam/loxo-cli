@@ -17,6 +17,10 @@
   (both integer-seconds and HTTP-date forms). Retries are **on by default**.
 - `--retries N` and `LOXO_MAX_RETRIES` to control or disable retrying.
 - `LoxoError.is_rate_limited`, `.retry_after`, and `.attempts`.
+- `make_paginator()` and the `Paginator` protocol are public: the per-scheme
+  cursor state machines are pure and importable, so callers driving their own
+  fetch loop (a different transport, a custom concurrency strategy) can reuse
+  the scheme handling instead of reimplementing it.
 
 ### Changed
 
@@ -37,8 +41,22 @@
   established — so a timed-out write is never replayed into a duplicate record.
   Note that a `DELETE` whose first attempt times out after committing will
   return 404 on retry and surface as exit 4, for an operation that succeeded.
+- A retry that waits a second or more now prints a one-line notice to stderr
+  even without `--verbose` (`Request failed; retrying in 5.0s (attempt 1)...`),
+  so a throttled run no longer looks like a frozen terminal. `--verbose` keeps
+  its detailed per-request line instead; the two never double-print, and
+  neither ever touches stdout, so `--json` output stays clean.
+- `httpx.TooManyRedirects` and `httpx.DecodingError` are now treated as fatal
+  rather than being retried like a timeout. Neither is a transport failure and
+  replaying either only delays the same error.
 
 ### Fixed
+
+- `AppState` (the CLI's `ctx.obj`) no longer prints the API key in its
+  `repr()`, closing the same leak class 0.5.1 fixed on `LoxoSettings`.
+- `LoxoError` raised after retries are exhausted again chains the originating
+  `httpx` exception (`raise ... from`), so the transport traceback is no longer
+  lost when a request is retried.
 
 - The `page` scheme no longer raises `TypeError` when a response reports
   `total_count` without a `per_page` and the caller passed `per_page=None`. It

@@ -36,6 +36,7 @@ Environment variables:
 | `LOXO_API_SLUG` | Agency slug (the `{slug}` in every request URL) |
 | `LOXO_BASE_URL` | API base URL (default `https://app.loxo.co/api`) |
 | `LOXO_PROFILE` | Default profile name to use |
+| `LOXO_MAX_RETRIES` | Retries for throttled/failed requests (default `3`; `0` disables) |
 
 The config file lives at `~/.config/loxo/config.toml` (or `$XDG_CONFIG_HOME/loxo/config.toml`)
 and is written with `0600` permissions. Example:
@@ -107,6 +108,27 @@ client-side. Object-valued fields match on their name, so `--filter status=Activ
 loxo jobs list -q "VP of Digital" --filter status=Active
 ```
 
+## Retries
+
+Retries are **on by default** for every invocation: a throttled (429), 5xx, timed-out, or
+connection-refused request is retried up to 3 times with exponential backoff and jitter,
+honoring a `Retry-After` header when the server sends one. A 60-second wall-clock budget
+caps the accumulated backoff for a single request; because that budget only gates the
+*next* sleep, the attempt already in flight still gets its own 30-second timeout, so the
+worst case for one request is nearer ~90 seconds. Any wait of a second or more prints a
+one-line notice to stderr (stdout stays clean for `--json`).
+
+Retries are method-aware: `GET`/`HEAD`/`PUT`/`DELETE`/`OPTIONS` retry on all of the above,
+while `POST` retries only when the request provably did not take effect (a 429, or a
+connection that was never established), so a timed-out write is never replayed into a
+duplicate record.
+
+```bash
+loxo --retries 0 jobs list          # fail fast, the pre-0.6.0 behavior
+LOXO_MAX_RETRIES=0 loxo jobs list   # same, via the environment
+loxo --retries 5 jobs list --all    # more patient
+```
+
 ## Exit codes
 
 | Code | Meaning |
@@ -120,6 +142,10 @@ loxo jobs list -q "VP of Digital" --filter status=Active
 | 6 | Server error (5xx) |
 | 7 | Timeout or network failure |
 
+Since 0.6.0 the retryable codes (5, 6, 7) are reached only after retries are exhausted, so
+they are no longer immediate — exit 5 in particular can now take up to ~90 seconds. Pass
+`--retries 0` to get the old fail-fast behavior back.
+
 ## Pagination
 
 Loxo paginates differently per endpoint: cursor (`scroll_id`), offset (`page`), and keyset
@@ -129,34 +155,85 @@ auto-detects the scheme (or force it with `--paginate scroll_id|page|after_id`).
 
 ## Async
 
+Scripts: `async with` builds a client, runs the work, and closes the pool on exit.
+
 ```python
+import asyncio
+
 from loxo_cli.client import AsyncLoxoClient
 from loxo_cli.config import load_settings
 from loxo_cli.pagination import apaginate
 
-settings = load_settings()
 
-# Scripts: one-shot, closes the pool on exit.
-async with AsyncLoxoClient(settings) as client:
-    job = await client.get("jobs/123")
+async def main() -> None:
+    settings = load_settings()
+    async with AsyncLoxoClient(settings) as client:
+        job = await client.get("jobs/123")
+        print(job)
 
-# Long-lived services (FastAPI lifespan, worker process): build ONE client
-# at startup and aclose() it at shutdown, so the connection pool is reused.
-# AsyncLoxoClient is safe to share across concurrent tasks.
-async for candidate in apaginate(
-    client, "jobs/123/job_candidates", scheme="page", items_key="job_candidates"
-):
-    ...
+        async for candidate in apaginate(
+            client, "jobs/123/candidates", scheme="scroll_id", items_key="candidates"
+        ):
+            print(candidate["id"])
+
+
+asyncio.run(main())
+```
+
+Long-lived services build **one** client at startup and `aclose()` it at shutdown, so the
+connection pool is reused across requests. `AsyncLoxoClient` is safe to share across
+concurrent tasks. In FastAPI that is a `lifespan`:
+
+```python
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+
+from loxo_cli.client import AsyncLoxoClient
+from loxo_cli.config import load_settings
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    app.state.loxo = AsyncLoxoClient(load_settings())
+    try:
+        yield
+    finally:
+        await app.state.loxo.aclose()
+
+
+app = FastAPI(lifespan=lifespan)
+
+
+@app.get("/jobs/{job_id}")
+async def get_job(job_id: int):
+    return await app.state.loxo.get(f"jobs/{job_id}")
+```
+
+The retry budget (`max_elapsed`) is **per request**, so `apaginate` gives every page its
+own budget: under sustained throttling a large sweep can run for far longer than any
+single request's bound. Bound a whole sweep with `asyncio.timeout(...)` rather than
+expecting `max_elapsed` to do it.
+
+```python
+async def sweep(client: AsyncLoxoClient) -> None:
+    async with asyncio.timeout(120):
+        async for candidate in apaginate(
+            client, "jobs/123/candidates", scheme="scroll_id", items_key="candidates"
+        ):
+            print(candidate["id"])
 ```
 
 Retries are on by default. Pass a policy to tune or disable them — a service
 answering an HTTP request should be far less patient than a CLI:
 
 ```python
+from loxo_cli.client import AsyncLoxoClient
+from loxo_cli.config import load_settings
 from loxo_cli.retry import RetryPolicy
 
 client = AsyncLoxoClient(
-    settings, retry=RetryPolicy(max_retries=1, max_delay=2.0, max_elapsed=5.0)
+    load_settings(), retry=RetryPolicy(max_retries=1, max_delay=2.0, max_elapsed=5.0)
 )
 ```
 
