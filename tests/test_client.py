@@ -27,6 +27,29 @@ def test_request_sends_auth_and_returns_json():
 
 
 @respx.mock
+def test_non_json_success_body_raises_loxo_error():
+    # A proxy's HTML error page under a 200, or a truncated body. Every
+    # failure out of this client must be a LoxoError, never a bare
+    # json.JSONDecodeError with no status_code and no attempts.
+    respx.get("https://app.loxo.co/api/acme/people").mock(
+        return_value=httpx.Response(200, text="<html>502 Bad Gateway</html>")
+    )
+    with LoxoClient(SETTINGS) as client:
+        with pytest.raises(LoxoError) as ei:
+            client.get("people")
+    assert ei.value.status_code == 200
+    assert isinstance(ei.value.__cause__, ValueError)
+    assert "testkey" not in str(ei.value)
+
+
+@respx.mock
+def test_empty_success_body_still_decodes_to_none():
+    respx.get("https://app.loxo.co/api/acme/people").mock(return_value=httpx.Response(204))
+    with LoxoClient(SETTINGS) as client:
+        assert client.get("people") is None
+
+
+@respx.mock
 def test_post_sends_json_body():
     captured = {}
 

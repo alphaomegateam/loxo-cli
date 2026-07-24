@@ -23,6 +23,18 @@ async def test_request_sends_auth_and_returns_json():
 
 
 @respx.mock
+async def test_non_json_success_body_raises_loxo_error():
+    respx.get("https://app.loxo.co/api/acme/people").mock(
+        return_value=httpx.Response(200, text="<html>502 Bad Gateway</html>")
+    )
+    async with AsyncLoxoClient(SETTINGS) as client:
+        with pytest.raises(LoxoError) as ei:
+            await client.get("people")
+    assert ei.value.status_code == 200
+    assert isinstance(ei.value.__cause__, ValueError)
+
+
+@respx.mock
 async def test_post_sends_json_body():
     captured = {}
 

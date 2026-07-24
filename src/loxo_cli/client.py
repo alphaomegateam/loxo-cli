@@ -136,7 +136,18 @@ class _BaseClient:
     def _decode(self, response: httpx.Response) -> Any:
         if not response.content:
             return None
-        return response.json()
+        try:
+            return response.json()
+        except ValueError as exc:
+            # json.JSONDecodeError subclasses ValueError. A 2xx carrying a
+            # non-JSON body (a proxy's HTML error page, a truncated
+            # response) must still surface as a LoxoError: every failure out
+            # of this client carries a status_code and an attempt count.
+            raise LoxoError(
+                f"Loxo returned {response.status_code} with a non-JSON body: "
+                f"{response.text[:500]}",
+                status_code=response.status_code,
+            ) from exc
 
 
 class LoxoClient(_BaseClient):
