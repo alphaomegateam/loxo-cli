@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.6.2]
+
+Two defaults that are right for a CLI and wrong for a service on a request
+path, where a browser is waiting on the response. Both are now overridable;
+neither default changed, so a caller who upgrades and passes nothing sees
+identical behavior.
+
+### Added
+
+- `RetryPolicy(notice_threshold=...)` — the delay at or above which a retry is
+  announced at `WARNING`. It was a fixed 1.0 second, which is the right bar for
+  a CLI (it stops sub-second blips spamming stderr) but hides a request-path
+  consumer's rate limiting from it entirely: a short policy such as
+  `RetryPolicy(max_retries=1, max_delay=2.0, max_elapsed=5.0)` computes a
+  0.25–0.5s backoff when the server sends no `Retry-After`, so a retried 429
+  produced no record a consumer could see. Set `0.0` to be told about every
+  retry at `WARNING`. Default is unchanged at `1.0`, and it lives on
+  `RetryPolicy` because that is already the object passed in to tune retries.
+- A `timeout` parameter on `LoxoClient`, `AsyncLoxoClient`, `build_client`, and
+  `build_async_client`, keyword-only, defaulting to the existing
+  `loxo_cli.client.TIMEOUT` (30 seconds). The per-attempt timeout was
+  hard-coded, and a retry policy cannot substitute for it: `max_elapsed` only
+  gates whether a *further* retry is allowed, so one hung request still blocked
+  for 30 seconds and turned a carefully chosen 5-second retry budget into a
+  30-second worst case.
+
+### Changed
+
+- A retry whose wait is below the notice threshold now logs at `DEBUG` instead
+  of not logging at all. It stays invisible at a default logging level and in
+  the CLI (whose stderr handler is at `WARNING`), but an application that
+  turned on `DEBUG` asked to see everything, and dropping the event outright
+  was surprising. A client built with `verbose=True` is unaffected: its
+  detailed `DEBUG` line still substitutes for the notice, so the two never
+  double-report one retry.
+
 ## [0.6.1]
 
 ### Fixed
