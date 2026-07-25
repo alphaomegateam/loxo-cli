@@ -9,6 +9,7 @@ import httpx
 
 from loxo_cli.config import LoxoSettings
 from loxo_cli.errors import LoxoError
+from loxo_cli.retry import NOTICE_THRESHOLD as _DEFAULT_NOTICE_THRESHOLD
 from loxo_cli.retry import (
     Outcome,
     RetryPolicy,
@@ -18,12 +19,16 @@ from loxo_cli.retry import (
     parse_retry_after,
 )
 
+# Default per-attempt timeout, and the ceiling on how long one hung request
+# can block. Thirty seconds suits a CLI; a service answering an HTTP request
+# should pass a smaller `timeout=` — a retry policy's `max_elapsed` only gates
+# whether a *further* retry is allowed, so it cannot bound the attempt in
+# flight.
 TIMEOUT = 30.0
 
-# A retry wait at or above this many seconds is announced at WARNING even
-# without --verbose. Below it the pause is short enough that silence reads
-# as normal latency; above it the terminal would otherwise look frozen.
-NOTICE_THRESHOLD = 1.0
+# Kept for anyone who imported it from this module in 0.6.1. The threshold is
+# now per-policy: RetryPolicy.notice_threshold, which defaults to this value.
+NOTICE_THRESHOLD = _DEFAULT_NOTICE_THRESHOLD
 
 # Silent for library consumers: the package attaches a NullHandler in
 # __init__, and the CLI attaches a stderr handler in __main__. Never log
@@ -49,10 +54,12 @@ class _BaseClient:
         *,
         verbose: bool = False,
         retry: RetryPolicy | None = None,
+        timeout: float = TIMEOUT,
     ) -> None:
         self._settings = settings
         self._verbose = verbose
         self._retry = retry if retry is not None else RetryPolicy()
+        self._timeout = timeout
 
     def _auth_headers(self) -> dict[str, str]:
         return {
@@ -74,12 +81,15 @@ class _BaseClient:
     def _log_retry(self, method: str, target: str, attempt: int, delay: float) -> None:
         # Verbose substitutes its detailed DEBUG line for the terse notice,
         # so the two never double-report the same retry. Without verbose, a
-        # long wait is a WARNING: a retry signals degraded service, and an
-        # application that configured logging should see it.
+        # wait at or above the policy's threshold is a WARNING: a retry
+        # signals degraded service, and an application that configured
+        # logging should see it. A shorter wait is not dropped — it drops to
+        # DEBUG, because a consumer watching at DEBUG asked for everything.
         if self._verbose:
             logger.debug("%s %s -> retry %d in %.1fs", method.upper(), target, attempt, delay)
-        elif delay >= NOTICE_THRESHOLD:
-            logger.warning("Request failed; retrying in %.1fs (attempt %d)...", delay, attempt)
+            return
+        level = logging.WARNING if delay >= self._retry.notice_threshold else logging.DEBUG
+        logger.log(level, "Request failed; retrying in %.1fs (attempt %d)...", delay, attempt)
 
     def _delay_or_raise(
         self,
@@ -162,12 +172,13 @@ class LoxoClient(_BaseClient):
         *,
         verbose: bool = False,
         retry: RetryPolicy | None = None,
+        timeout: float = TIMEOUT,
     ) -> None:
-        super().__init__(settings, verbose=verbose, retry=retry)
+        super().__init__(settings, verbose=verbose, retry=retry, timeout=timeout)
         self._http = httpx.Client(
             headers=self._auth_headers(),
             follow_redirects=True,
-            timeout=TIMEOUT,
+            timeout=self._timeout,
         )
 
     def __enter__(self) -> "LoxoClient":
@@ -245,8 +256,9 @@ def build_client(
     *,
     verbose: bool = False,
     retry: RetryPolicy | None = None,
+    timeout: float = TIMEOUT,
 ) -> LoxoClient:
-    return LoxoClient(settings, verbose=verbose, retry=retry)
+    return LoxoClient(settings, verbose=verbose, retry=retry, timeout=timeout)
 
 
 class AsyncLoxoClient(_BaseClient):
@@ -263,12 +275,13 @@ class AsyncLoxoClient(_BaseClient):
         *,
         verbose: bool = False,
         retry: RetryPolicy | None = None,
+        timeout: float = TIMEOUT,
     ) -> None:
-        super().__init__(settings, verbose=verbose, retry=retry)
+        super().__init__(settings, verbose=verbose, retry=retry, timeout=timeout)
         self._http = httpx.AsyncClient(
             headers=self._auth_headers(),
             follow_redirects=True,
-            timeout=TIMEOUT,
+            timeout=self._timeout,
         )
 
     async def __aenter__(self) -> "AsyncLoxoClient":
@@ -346,5 +359,6 @@ def build_async_client(
     *,
     verbose: bool = False,
     retry: RetryPolicy | None = None,
+    timeout: float = TIMEOUT,
 ) -> AsyncLoxoClient:
-    return AsyncLoxoClient(settings, verbose=verbose, retry=retry)
+    return AsyncLoxoClient(settings, verbose=verbose, retry=retry, timeout=timeout)

@@ -35,6 +35,13 @@ IDEMPOTENT = frozenset({"GET", "HEAD", "PUT", "DELETE", "OPTIONS"})
 _SAFE_FOR_NON_IDEMPOTENT = frozenset({"throttled", "connect"})
 
 
+# A retry wait at or above this many seconds is announced at WARNING. Below
+# it the pause is short enough that, for a CLI, silence reads as normal
+# latency; above it the terminal would otherwise look frozen. A consumer on a
+# request path wants a much lower bar — see RetryPolicy.notice_threshold.
+NOTICE_THRESHOLD = 1.0
+
+
 @dataclass(frozen=True)
 class RetryPolicy:
     max_retries: int = 3
@@ -44,6 +51,12 @@ class RetryPolicy:
     # before each sleep. Without it, max_retries=3 against a server sending
     # Retry-After: 30 permits ~3.5 minutes on a single call.
     max_elapsed: float = 60.0
+    # Delay at or above which a retry is announced at WARNING rather than
+    # DEBUG. The default suits a CLI. A short request-path policy computes
+    # delays well under a second, so every retry it makes would land at
+    # DEBUG; set 0.0 to be told about all of them at WARNING. Lives here
+    # because this is already the object a consumer passes to tune retries.
+    notice_threshold: float = NOTICE_THRESHOLD
 
 
 def classify_response(status_code: int) -> Outcome:

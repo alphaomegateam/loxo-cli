@@ -117,6 +117,7 @@ caps the accumulated backoff for a single request; because that budget only gate
 *next* sleep, the attempt already in flight still gets its own 30-second timeout, so the
 worst case for one request is nearer ~90 seconds. Any wait of a second or more prints a
 one-line notice to stderr (stdout stays clean for `--json`); pass `--quiet` to suppress it.
+A library consumer can move that one-second bar with `RetryPolicy(notice_threshold=...)`.
 Using the client as a library instead? See [Logging](#logging) — there the notice is a log
 record, and you decide whether it is shown.
 
@@ -141,6 +142,9 @@ application asks for output:
 - per-request lines (method and URL, only when the client is built with `verbose=True`) at
   `DEBUG`
 - the long-retry notice at `WARNING`, because a retry means the service is degraded
+- a *short* retry — one whose wait is under `RetryPolicy.notice_threshold` (default `1.0`
+  second) — at `DEBUG`, so it is quiet at a default logging level but never silently
+  dropped for someone watching at `DEBUG`
 
 Headers are never logged, so the API key cannot reach a log record.
 
@@ -155,6 +159,16 @@ import logging
 
 logging.basicConfig(level=logging.WARNING)   # surfaces retry notices
 logging.getLogger("loxo_cli").setLevel(logging.DEBUG)  # ...and request lines
+```
+
+A service on a request path usually wants *every* retry at `WARNING`, because its policy
+is short enough that the computed backoff never reaches a second. Set the threshold to
+`0.0` on the policy rather than dropping the whole logger to `DEBUG`:
+
+```python
+from loxo_cli.retry import RetryPolicy
+
+RetryPolicy(max_retries=1, max_delay=2.0, max_elapsed=5.0, notice_threshold=0.0)
 ```
 
 The CLI attaches its own stderr handler, which is why `loxo --verbose` and the retry
@@ -262,7 +276,8 @@ async def sweep(client: AsyncLoxoClient) -> None:
 ```
 
 Retries are on by default. Pass a policy to tune or disable them — a service
-answering an HTTP request should be far less patient than a CLI:
+answering an HTTP request should be far less patient than a CLI. Three settings work
+together, and tuning only the first leaves the other two at CLI defaults:
 
 ```python
 from loxo_cli.client import AsyncLoxoClient
@@ -270,9 +285,25 @@ from loxo_cli.config import load_settings
 from loxo_cli.retry import RetryPolicy
 
 client = AsyncLoxoClient(
-    load_settings(), retry=RetryPolicy(max_retries=1, max_delay=2.0, max_elapsed=5.0)
+    load_settings(),
+    # One retry, capped backoff, ~5s of total retry budget.
+    retry=RetryPolicy(
+        max_retries=1,
+        max_delay=2.0,
+        max_elapsed=5.0,
+        # Without this, every retry this policy makes is under the 1.0s
+        # default notice threshold and so lands at DEBUG, not WARNING.
+        notice_threshold=0.0,
+    ),
+    # Per-attempt, and the real worst case for a browser waiting on this
+    # response: max_elapsed only gates whether a *further* retry is allowed,
+    # so a single hung request would otherwise block for the 30s default.
+    timeout=5.0,
 )
 ```
+
+`timeout` is available on `LoxoClient`, `AsyncLoxoClient`, `build_client`, and
+`build_async_client`, and defaults to `loxo_cli.client.TIMEOUT` (30 seconds).
 
 ## Contributing
 

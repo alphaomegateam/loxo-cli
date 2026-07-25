@@ -222,6 +222,9 @@ def test_long_retry_is_announced_without_verbose(caplog, capsys):
 
 @respx.mock
 def test_short_retry_stays_quiet_without_verbose(caplog):
+    # "Quiet" means nothing at WARNING, which is what a default logging setup
+    # (and the CLI's stderr handler) shows. Since 0.6.2 the retry is still
+    # reported at DEBUG rather than dropped — see test_client_tuning.py.
     respx.get("https://app.loxo.co/api/acme/people").mock(
         side_effect=[
             httpx.Response(429, headers={"Retry-After": "0"}),
@@ -231,7 +234,7 @@ def test_short_retry_stays_quiet_without_verbose(caplog):
     with caplog.at_level(logging.DEBUG, logger="loxo_cli"):
         with LoxoClient(SETTINGS) as client:
             client.get("people")
-    assert caplog.text == ""
+    assert [r for r in caplog.records if r.levelno >= logging.WARNING] == []
 
 
 @respx.mock
