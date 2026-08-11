@@ -4,6 +4,7 @@ from loxo_cli.models.company import Company
 from loxo_cli.models.deal import Deal
 from loxo_cli.models.job import Job
 from loxo_cli.models.person import Person
+from loxo_cli.models.placement import Placement
 from loxo_cli.models.reference import ReferenceItem
 from loxo_cli.models.webhook import Webhook
 
@@ -15,6 +16,7 @@ __all__ = [
     "Deal",
     "Job",
     "Person",
+    "Placement",
     "ReferenceItem",
     "Webhook",
 ]

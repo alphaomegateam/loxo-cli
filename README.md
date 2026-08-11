@@ -2,7 +2,7 @@
 
 A fast, ergonomic command-line interface for the [Loxo](https://loxo.co) recruiting
 ATS/CRM REST API. It offers typed subcommands for the common resources (people, jobs,
-companies, deals, candidates, activities, webhooks, reference data) plus a generic
+companies, deals, candidates, placements, activities, webhooks, reference data) plus a generic
 `loxo api` escape hatch that can call any endpoint. Output is human-friendly tables on a
 terminal and clean JSON when piped, so it fits both interactive use and scripts.
 
@@ -69,6 +69,7 @@ printed by `loxo configure list`, logged, or shown in `--verbose` output.
 | `companies` | List/search, get, create, update companies |
 | `deals` | List, get, create, update deals |
 | `candidates` | List/get/add/update candidates under a job |
+| `placements` | List and get placements (read-only — see note below) |
 | `activities` | List and add person events (activities) |
 | `webhooks` | Full CRUD for webhooks (with enum validation) |
 | `ref` | Reference lookups: job/activity/source/person types, lists, custom fields, hierarchies |
@@ -82,6 +83,30 @@ name and type. Filter to one object with `--object deal` (matches the field's
 `item_type`, case-insensitive) and hide built-ins with `--custom-only`. For a
 hierarchy field, `loxo ref hierarchies custom_hierarchy_4 --object deal` lists
 its options (name + id); the FIELD argument also accepts the numeric field id.
+
+### Placements are read-only
+
+`placements` exposes only `list` and `get`. The API's write endpoints accept
+`custom_*` parameters — they pass the endpoint's `custom_*` prefix filter — but
+never assign them. Any agency that marks a placement custom field **required**
+therefore cannot create or update a placement through the API at all: the write
+fails validation on a field the API will not let you set. Verified against a
+live agency; every encoding returns an identical 422 naming the same fields as
+missing (option ids, option names, `{"id","value"}` objects, `_id`-suffixed
+keys, a `{"placement": {...}}` wrapper, and a `dynamic_fields` object).
+
+`loxo api POST placements --data @body.json` is still there if your agency marks
+no placement custom field required.
+
+`placements list` has three **server-side** filters — `--job`,
+`--person-global-status-id`, `--include-related-agencies`. Prefer `--job` over
+`--filter job=...`: `--filter` narrows a page after it arrives, while `--job`
+narrows on the server, so `--all` walks far fewer pages.
+
+```bash
+loxo placements list --job 3406638
+loxo placements list --all -q "designer" --json | jq '.[].person.name'
+```
 
 ## Output
 

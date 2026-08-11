@@ -117,10 +117,13 @@ def _fmt(value: Any) -> str:
     if isinstance(value, dict):
         # Loxo returns many fields (status, job_type, category, ...) as
         # {"id": ..., "name": ...} objects. Show the human-readable name in
-        # tables instead of dumping the raw JSON object.
-        name = value.get("name")
-        if isinstance(name, (str, int, float)):
-            return str(name)
+        # tables instead of dumping the raw JSON object. A placement's `job`
+        # is the same idea but labels itself `title`, so fall back to that
+        # before giving up and dumping JSON.
+        for key in ("name", "title"):
+            label = value.get(key)
+            if isinstance(label, (str, int, float)):
+                return str(label)
         return json.dumps(value)
     if isinstance(value, list):
         return json.dumps(value)
