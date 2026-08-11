@@ -1,5 +1,47 @@
 # Changelog
 
+## [0.7.0]
+
+### Added
+
+- `loxo placements list` and `loxo placements get`. `list` exposes the
+  endpoint's three server-side filters — `--job` (`job_id`),
+  `--person-global-status-id`, and `--include-related-agencies` — alongside the
+  usual `-q`, `--all`, and client-side `--filter`. `--job` is worth preferring
+  over `--filter job=...`: it narrows on the server, so `--all` walks far fewer
+  pages. Like `deals`, the endpoint rejects both `per_page` and `page` with
+  HTTP 422, so it scroll_id-paginates at a server-fixed page size.
+
+  Writes are deliberately not exposed. `POST`/`PUT placements` accept `custom_*`
+  parameters (they pass the endpoint's `custom_*` prefix filter) but never
+  assign them, so any agency that marks a placement custom field required
+  cannot satisfy validation from the API at all — every encoding tried (option
+  ids, option names, `{"id","value"}` objects, `_id`-suffixed keys, a
+  `{"placement": ...}` wrapper, and a `dynamic_fields` object) returns an
+  identical 422 naming the same fields as missing. `loxo api POST placements
+  --data @body.json` remains available.
+
+### Fixed
+
+- `loxo jobs create` crashed with a raw pydantic `ValidationError` traceback
+  when Loxo answered `200` with `{"job": {"id": null, ...}}` — an echo of the
+  submitted payload that persists nothing. It now reports a clean error through
+  the normal CLI channel.
+- Offset pagination only recognized the documented `{"pagination": {...}}`
+  envelope, but `jobs` reports `current_page`/`total_pages`/`per_page`/
+  `total_count` at the **top level**. Two consequences, both fixed by reading
+  either shape:
+  - `_PagePaginator` never saw `total_count`, so its count-based stop never
+    fired and a `--all` walk ended only on an empty page. Against a server that
+    keeps returning rows this does not terminate, and Loxo rejects a
+    `page`/`per_page` walk past 10,000 results with a hard `400` rather than an
+    empty page.
+  - `detect_scheme` classified a live `jobs` response as `after_id`, so
+    `loxo api GET jobs --all` paginated with the wrong scheme.
+- Table rendering showed a placement's `job` as a raw JSON dump: `_fmt`
+  collapsed `{"id", "name"}` objects to their name, but a job labels itself
+  `title`. It now falls back to `title`.
+
 ## [0.6.2]
 
 Two defaults that are right for a CLI and wrong for a service on a request

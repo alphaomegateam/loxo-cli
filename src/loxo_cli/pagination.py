@@ -9,7 +9,13 @@ def detect_scheme(data: Any) -> str:
     if isinstance(data, dict):
         if "scroll_id" in data:
             return "scroll_id"
-        if "pagination" in data:
+        # Offset endpoints come in two shapes: the documented one nests the
+        # cursor under "pagination", but `jobs` puts current_page/total_pages/
+        # per_page/total_count at the top level. Without the second check the
+        # live jobs response falls through to after_id, so
+        # `loxo api GET jobs --paginate` sends after_id to an endpoint that
+        # paginates by page.
+        if "pagination" in data or "current_page" in data:
             return "page"
     return "after_id"
 
@@ -114,7 +120,18 @@ class _PagePaginator:
         if not items:
             self._done = True
             return [], True
-        pag = data.get("pagination", {}) if isinstance(data, dict) else {}
+        # `jobs` reports its cursor at the TOP level (current_page,
+        # total_pages, per_page, total_count) even though the documented
+        # shape nests them under "pagination". Read the nested object when
+        # present and fall back to the envelope itself, so both shapes stop
+        # on the count. Without this the count-based stop never fires for
+        # jobs: the walk only ends on an empty page, and Loxo answers a
+        # page/per_page walk past 10,000 results with a hard 400
+        # ("Paginating past the first 10000 results ... not supported")
+        # rather than an empty page.
+        envelope = data if isinstance(data, dict) else {}
+        nested = envelope.get("pagination")
+        pag = nested if isinstance(nested, dict) else envelope
         total = pag.get("total_count")
         size = pag.get("per_page", self._per_page)
         current = pag.get("current_page", self._page)

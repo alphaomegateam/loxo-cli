@@ -10,6 +10,8 @@ SETTINGS = LoxoSettings(api_key="k", slug="acme", base_url="https://app.loxo.co/
 
 def test_detect_scheme():
     assert detect_scheme({"scroll_id": "x", "people": []}) == "scroll_id"
+    # jobs reports its cursor at the top level, not under "pagination".
+    assert detect_scheme({"current_page": 1, "total_count": 9, "results": []}) == "page"
     assert detect_scheme({"pagination": {}, "results": []}) == "page"
     assert detect_scheme([{"id": 1}]) == "after_id"
 
@@ -119,3 +121,53 @@ def test_after_id_stops_when_cursor_does_not_advance():
     assert [i["id"] for i in items] == [1, 2]
     # One real page + one probe that proves the cursor didn't advance, then stop.
     assert route.call_count == 2
+
+
+def test_page_scheme_reads_top_level_cursor_keys():
+    """`jobs` reports its cursor at the top level, not under "pagination".
+
+    Loxo hard-400s a page/per_page walk past 10,000 results, so a paginator
+    that cannot see total_count would page until that error instead of
+    stopping on the count.
+    """
+    pages = []
+
+    class _Client:
+        def get(self, endpoint, params=None):
+            pages.append(dict(params or {}))
+            # Bounded on purpose. This server never returns an empty page, so
+            # before the top-level-cursor fix the walk did not merely overrun
+            # by one request — it never terminated at all. Raising here makes
+            # a regression fail fast instead of hanging the suite.
+            if len(pages) > 5:
+                raise AssertionError("paginator did not stop on total_count")
+            page = (params or {}).get("page", 1)
+            return {
+                "current_page": page,
+                "total_pages": 2,
+                "per_page": 2,
+                "total_count": 4,
+                "results": [{"id": page * 10}, {"id": page * 10 + 1}],
+            }
+
+    items = list(paginate(_Client(), "jobs", scheme="page", items_key="results", per_page=2))
+    # Stops on the count after page 2 rather than fetching an empty page 3.
+    assert [p["page"] for p in pages] == [1, 2]
+    assert [i["id"] for i in items] == [10, 11, 20, 21]
+
+
+def test_page_scheme_still_reads_nested_pagination_object():
+    pages = []
+
+    class _Client:
+        def get(self, endpoint, params=None):
+            pages.append(dict(params or {}))
+            page = (params or {}).get("page", 1)
+            return {
+                "pagination": {"current_page": page, "per_page": 2, "total_count": 4},
+                "results": [{"id": page}],
+            }
+
+    items = list(paginate(_Client(), "jobs", scheme="page", items_key="results", per_page=2))
+    assert [p["page"] for p in pages] == [1, 2]
+    assert len(items) == 2

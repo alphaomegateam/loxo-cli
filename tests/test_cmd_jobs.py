@@ -109,3 +109,30 @@ def test_jobs_create_wraps_job():
     result = runner.invoke(app, ["--json", "jobs", "create", "--title", "New"], env=ENV)
     assert result.exit_code == 0
     assert captured["body"] == {"job": {"title": "New"}}
+
+
+@respx.mock
+def test_jobs_create_rejects_unsaved_response():
+    # Loxo answers some POST jobs calls 200 with the submitted payload and
+    # "id": null — nothing is persisted. That used to surface as a raw pydantic
+    # ValidationError traceback; it must be a clean CLI error instead.
+    respx.post("https://app.loxo.co/api/acme/jobs").mock(
+        return_value=httpx.Response(200, json={"job": {"id": None, "title": "T"}})
+    )
+    result = runner.invoke(app, ["jobs", "create", "--title", "T"], env=ENV)
+    assert result.exit_code != 0
+    combined = result.output + (result.stderr if result.stderr_bytes else "")
+    assert "was not created" in combined
+    # The old failure mode: an unhandled pydantic error rendered as a traceback.
+    assert "ValidationError" not in combined
+    assert "Traceback" not in combined
+
+
+@respx.mock
+def test_jobs_create_accepts_saved_response():
+    respx.post("https://app.loxo.co/api/acme/jobs").mock(
+        return_value=httpx.Response(200, json={"job": {"id": 7, "title": "T"}})
+    )
+    result = runner.invoke(app, ["--json", "jobs", "create", "--title", "T"], env=ENV)
+    assert result.exit_code == 0
+    assert json.loads(result.stdout)["id"] == 7
