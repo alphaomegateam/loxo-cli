@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.8.0]
+
+### Added
+
+- `loxo activities get <id>` — fetch a single person event by id. Verified
+  live: `GET person_events/{id}` returns the record flat (no `person_event`
+  envelope) and carries fields the list response omits, including
+  `event_deal_links`, `ring_central_call`, and `twilio_call`.
+
+  A missing id is the sharp edge here. Loxo answers an unknown person event
+  with HTTP **200 and a bare `null` body** rather than a 404, so the command
+  checks the response itself and reports not-found through the normal error
+  channel with exit code 4, matching every other `get` in the CLI. Without that
+  check the command would print `null` and exit 0, which a script would read as
+  success.
+
 ## [0.7.0]
 
 ### Added

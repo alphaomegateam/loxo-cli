@@ -70,7 +70,7 @@ printed by `loxo configure list`, logged, or shown in `--verbose` output.
 | `deals` | List, get, create, update deals |
 | `candidates` | List/get/add/update candidates under a job |
 | `placements` | List and get placements (read-only — see note below) |
-| `activities` | List and add person events (activities) |
+| `activities` | List, get, and add person events (activities) |
 | `webhooks` | Full CRUD for webhooks (with enum validation) |
 | `ref` | Reference lookups: job/activity/source/person types, lists, custom fields, hierarchies |
 | `api` | Generic escape hatch — call any endpoint directly |
