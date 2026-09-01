@@ -5,6 +5,8 @@ from typing import Optional
 import typer
 
 from loxo_cli.commands._helpers import apply_filters, build_payload, load_data, parse_fields
+from loxo_cli.errors import LoxoError
+from loxo_cli.models.base import unwrap_envelope
 from loxo_cli.pagination import paginate
 
 FILTER_HELP = "Exact client-side match key=value on returned records (repeatable)."
@@ -50,6 +52,24 @@ def list_activities(
         rows = data.get("person_events", []) if isinstance(data, dict) else data
     rows = apply_filters(rows, filter_)
     state.emit(rows, columns=["id", "activity_type_id", "person_id", "notes"])
+
+
+@activities_app.command("get")
+def get_activity(
+    ctx: typer.Context,
+    activity_id: int = typer.Argument(..., help="Person event (activity) id."),
+) -> None:
+    state = ctx.obj
+    # Verified live: an unknown person_event id answers HTTP 200 with a bare
+    # `null` body instead of a 404, so a missing record has to be detected here
+    # or the command would print "null" and exit 0. Anything that isn't a JSON
+    # object is treated as not found and reported as a 404 (exit code 4), which
+    # is what every other `get` in this CLI does.
+    data = state.client().get(f"person_events/{activity_id}")
+    if not isinstance(data, dict):
+        raise LoxoError(f"Activity {activity_id} not found.", status_code=404)
+    # Single GET comes back flat; unwrap defensively in case that changes.
+    state.emit(unwrap_envelope(data, "person_event"))
 
 
 @activities_app.command("add")
