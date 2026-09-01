@@ -16,6 +16,14 @@
   check the command would print `null` and exit 0, which a script would read as
   success.
 
+### Changed
+
+- Releases now unify on a single trigger: pushing a `v*` tag publishes to PyPI
+  **and** creates the matching GitHub Release, with this file's section for that
+  version as the release notes and the built wheel and sdist attached. GitHub
+  Releases had lapsed after v0.2.2 because creating them was a separate manual
+  step; making one a byproduct of the tag push removes the drift.
+
 ## [0.7.0]
 
 ### Added
