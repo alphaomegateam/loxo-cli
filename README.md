@@ -335,12 +335,31 @@ client = AsyncLoxoClient(
 ```bash
 uv sync                 # install dependencies
 uv run pytest           # run the test suite (HTTP is mocked; no live calls)
-uv run ruff check src tests
-uv run black --check src tests
+uv run ruff check src tests scripts
+uv run black --check src tests scripts
 uv run mypy
 ```
 
 Commits follow [Conventional Commits](https://www.conventionalcommits.org/).
+
+## Releasing
+
+Pushing a `v*` tag is the entire release process. `.github/workflows/publish.yml`
+builds the project, uploads it to PyPI via trusted publishing (OIDC — no token
+to rotate), and then creates the matching GitHub Release, using that version's
+`CHANGELOG.md` section as the release notes and attaching the built wheel and
+sdist.
+
+```bash
+# bump `version` in pyproject.toml and add the CHANGELOG.md section first
+git tag v0.8.0
+git push origin v0.8.0
+```
+
+The changelog section is extracted by `scripts/changelog_section.py`, which
+fails loudly on a missing version rather than publishing an empty release body.
+A test asserts that `CHANGELOG.md` always has a section matching the current
+`pyproject.toml` version, so a tag can't be pushed for an undocumented release.
 
 ## License
 

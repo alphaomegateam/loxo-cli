@@ -15,7 +15,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: uv sync --all-extras --dev
-      - run: uv run ruff check src tests
-      - run: uv run black --check src tests
+      - run: uv run ruff check src tests scripts
+      - run: uv run black --check src tests scripts
       - run: uv run mypy
       - run: uv run pytest -q
